@@ -200,6 +200,93 @@ Everything else (new capabilities, OS compatibility, hardware support, enhanceme
 
 This keeps the base system minimal and lets every user customize their installation without inheriting features they don't want.
 
+## VPS / Server Deployment
+
+After cloning the repo and running `npm install && npm run build && ./container/build.sh`, you need to configure several things that live outside Git:
+
+### 1. Environment file (`.env`)
+
+```bash
+# Required
+TELEGRAM_BOT_TOKEN=...          # from @BotFather
+CLAUDE_CODE_OAUTH_TOKEN=...     # or ANTHROPIC_API_KEY
+
+# Optional
+ASSISTANT_NAME=Andy             # trigger word (default: Andy)
+LOG_LEVEL=info
+```
+
+### 2. Register groups in SQLite
+
+Groups are stored in `store/messages.db`. After the first run creates the DB, register groups:
+
+```sql
+-- Main (private chat, no trigger needed)
+INSERT INTO registered_groups (jid, name, folder, trigger_pattern, added_at, requires_trigger, is_main)
+VALUES ('tg:<your_chat_id>', 'telegram_main', 'telegram_main', '@Andy', datetime('now'), 0, 1);
+
+-- Additional group (trigger required)
+INSERT INTO registered_groups (jid, name, folder, trigger_pattern, added_at, requires_trigger, is_main)
+VALUES ('tg:<group_chat_id>', 'MyGroup', 'telegram_my-group', '@Andy|@Mao|@MyBot', datetime('now'), 1, 0);
+```
+
+Send `/chatid` to the bot to discover chat IDs.
+
+### 3. Mount allowlist (`~/.config/nanoclaw/mount-allowlist.json`)
+
+Controls which host paths containers can access:
+
+```json
+{
+  "allowedRoots": [
+    {
+      "path": "/workspace/extra",
+      "allowReadWrite": true,
+      "description": "Extra workspace (Obsidian notes etc.)"
+    }
+  ],
+  "blockedPatterns": [],
+  "nonMainReadOnly": false
+}
+```
+
+### 4. systemd service (Linux)
+
+```ini
+# /etc/systemd/system/nanoclaw.service
+[Unit]
+Description=NanoClaw Personal Assistant
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/project
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=5
+EnvironmentFile=/workspace/project/.env
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl daemon-reload
+systemctl enable --now nanoclaw
+```
+
+### 5. Optional: Obsidian notes sync
+
+```bash
+git clone git@github.com:<user>/Obsidian_Memory.git /workspace/extra/Obsidian_Memory
+# Add cron for auto-sync
+crontab -e
+# */5 * * * * cd /workspace/extra/Obsidian_Memory && git pull --rebase && git add -A && git diff --cached --quiet || git commit -m "auto-sync" && git push
+```
+
+Requires an SSH key on the server added to GitHub.
+
 ## Community
 
 Questions? Ideas? [Join the Discord](https://discord.gg/VDdww8qS42).

@@ -395,9 +395,13 @@ async function startMessageLoop(): Promise<void> {
           // context when a trigger eventually arrives.
           if (needsTrigger) {
             const allowlistCfg = loadSenderAllowlist();
+            // Use the per-group trigger pattern if set, otherwise fall back to global
+            const triggerRe = group.trigger
+              ? new RegExp(`^(?:${group.trigger})\\b`, 'i')
+              : TRIGGER_PATTERN;
             const hasTrigger = groupMessages.some(
               (m) =>
-                TRIGGER_PATTERN.test(m.content.trim()) &&
+                triggerRe.test(m.content.trim()) &&
                 (m.is_from_me ||
                   isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
             );
