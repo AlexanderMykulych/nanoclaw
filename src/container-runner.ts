@@ -26,6 +26,7 @@ import {
   stopContainer,
 } from './container-runtime.js';
 import { detectAuthMode } from './credential-proxy.js';
+import { readEnvFile } from './env.js';
 import { validateAdditionalMounts } from './mount-security.js';
 import { RegisteredGroup } from './types.js';
 
@@ -236,6 +237,19 @@ function buildContainerArgs(
     args.push('-e', 'ANTHROPIC_API_KEY=placeholder');
   } else {
     args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
+  }
+
+  // Pass Google Calendar credentials if configured (direct API access from container)
+  const googleEnv = readEnvFile([
+    'GOOGLE_CLIENT_ID',
+    'GOOGLE_CLIENT_SECRET',
+    'GOOGLE_REFRESH_TOKEN',
+  ]);
+  if (googleEnv.GOOGLE_CLIENT_ID && googleEnv.GOOGLE_REFRESH_TOKEN) {
+    args.push('-e', `GOOGLE_CLIENT_ID=${googleEnv.GOOGLE_CLIENT_ID}`);
+    args.push('-e', `GOOGLE_CLIENT_SECRET=${googleEnv.GOOGLE_CLIENT_SECRET}`);
+    args.push('-e', `GOOGLE_REFRESH_TOKEN=${googleEnv.GOOGLE_REFRESH_TOKEN}`);
+    args.push('-e', `GOOGLE_CALENDAR_TIMEZONE=${TIMEZONE}`);
   }
 
   // Runtime-specific args for host gateway resolution
