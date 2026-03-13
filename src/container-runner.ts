@@ -123,6 +123,12 @@ function buildVolumeMounts(
     '.claude',
   );
   fs.mkdirSync(groupSessionsDir, { recursive: true });
+  // Create subdirectories required by Claude Code SDK (container runs as uid 1000)
+  for (const subdir of ['debug', 'backups', 'session-env']) {
+    const dir = path.join(groupSessionsDir, subdir);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.chmodSync(dir, 0o777);
+  }
   const settingsFile = path.join(groupSessionsDir, 'settings.json');
   if (!fs.existsSync(settingsFile)) {
     fs.writeFileSync(
