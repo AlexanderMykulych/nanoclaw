@@ -183,6 +183,11 @@ async function runTask(
       (proc, containerName) =>
         deps.onProcess(task.chat_jid, proc, containerName, task.group_folder),
       async (streamedOutput: ContainerOutput) => {
+        // Skip streaming intermediate chunks — only forward final results.
+        // Streaming chunks are followed by a result with the same text,
+        // which would cause duplicate messages.
+        if (streamedOutput.streaming) return;
+
         if (streamedOutput.result) {
           result = streamedOutput.result;
           // Forward result to user (sendMessage handles formatting)
