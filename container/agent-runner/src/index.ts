@@ -453,13 +453,17 @@ async function runQuery(
       lastAssistantUuid = (message as { uuid: string }).uuid;
 
       // Emit assistant text blocks as streaming output for progressive display
-      const assistantMsg = message as { message?: { content?: Array<{ type: string; text?: string }> } };
-      if (assistantMsg.message?.content) {
-        const textParts = assistantMsg.message.content
+      // SDK assistant messages may have content at message.message.content or message.content
+      const msg = message as Record<string, unknown>;
+      const contentSource = (msg.message as Record<string, unknown>)?.content ?? msg.content;
+      log(`[streaming] assistant keys=${Object.keys(msg).join(',')}, hasMessage=${!!msg.message}, hasContent=${!!msg.content}, contentSource=${!!contentSource}`);
+      if (Array.isArray(contentSource)) {
+        const textParts = (contentSource as Array<{ type: string; text?: string }>)
           .filter((c) => c.type === 'text' && c.text)
           .map((c) => c.text!);
         const text = textParts.join('').replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
         if (text) {
+          log(`[streaming] emitting ${text.length} chars`);
           writeOutput({
             status: 'success',
             result: text,
