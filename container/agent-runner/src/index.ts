@@ -454,17 +454,16 @@ async function runQuery(
 
       // Emit assistant text blocks as streaming output for progressive display
       // SDK assistant messages may have content at message.message.content or message.content
+      // Emit assistant text blocks as streaming output for progressive display
       const msg = message as Record<string, unknown>;
       const innerMsg = msg.message as Record<string, unknown> | undefined;
       const contentSource = innerMsg?.content ?? msg.content;
-      log(`[streaming] assistant hasMessage=${!!innerMsg}, contentType=${typeof contentSource}, isArray=${Array.isArray(contentSource)}, sample=${JSON.stringify(contentSource)?.slice(0, 300)}`);
       if (Array.isArray(contentSource)) {
         const textParts = (contentSource as Array<{ type: string; text?: string }>)
           .filter((c) => c.type === 'text' && c.text)
           .map((c) => c.text!);
         const text = textParts.join('').replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
         if (text) {
-          log(`[streaming] emitting ${text.length} chars`);
           writeOutput({
             status: 'success',
             result: text,
