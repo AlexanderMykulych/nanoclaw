@@ -207,25 +207,67 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   let hadError = false;
   let outputSentToUser = false;
 
+  // Streaming edit state: track the message being progressively updated
+  let streamingMessageId: string | undefined;
+  let lastEditTime = 0;
+  const EDIT_DEBOUNCE_MS = 1500; // Min interval between edits (Telegram rate limits)
+
   const output = await runAgent(group, prompt, chatJid, async (result) => {
-    // Streaming output callback — called for each agent result
+    if (result.streaming && result.result) {
+      // Streaming intermediate text — send or edit progressively
+      const raw =
+        typeof result.result === 'string'
+          ? result.result
+          : JSON.stringify(result.result);
+      const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+      if (!text) return;
+
+      const now = Date.now();
+
+      if (!streamingMessageId && channel.sendMessageWithId) {
+        // First streaming chunk — send new message and save ID
+        streamingMessageId = await channel.sendMessageWithId(chatJid, text);
+        lastEditTime = now;
+        outputSentToUser = true;
+      } else if (streamingMessageId && channel.editMessage) {
+        // Subsequent chunks — edit existing message (debounced)
+        if (now - lastEditTime >= EDIT_DEBOUNCE_MS) {
+          await channel.editMessage(chatJid, streamingMessageId, text);
+          lastEditTime = now;
+        }
+      } else {
+        // Fallback for channels without edit support — send as new message
+        await channel.sendMessage(chatJid, text);
+        outputSentToUser = true;
+      }
+
+      resetIdleTimer();
+      return;
+    }
+
+    // Final result
     if (result.result) {
       const raw =
         typeof result.result === 'string'
           ? result.result
           : JSON.stringify(result.result);
-      // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
       const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
       logger.info({ group: group.name }, `Agent output: ${raw.slice(0, 200)}`);
       if (text) {
-        await channel.sendMessage(chatJid, text);
+        if (streamingMessageId && channel.editMessage) {
+          // Replace streaming message with final result
+          await channel.editMessage(chatJid, streamingMessageId, text);
+          streamingMessageId = undefined;
+        } else {
+          await channel.sendMessage(chatJid, text);
+        }
         outputSentToUser = true;
       }
-      // Only reset idle timer on actual results, not session-update markers (result: null)
       resetIdleTimer();
     }
 
     if (result.status === 'success') {
+      streamingMessageId = undefined; // Reset for next query cycle
       queue.notifyIdle(chatJid);
     }
 

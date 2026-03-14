@@ -34,6 +34,7 @@ interface ContainerOutput {
   result: string | null;
   newSessionId?: string;
   error?: string;
+  streaming?: boolean;
 }
 
 interface SessionEntry {
@@ -450,6 +451,23 @@ async function runQuery(
 
     if (message.type === 'assistant' && 'uuid' in message) {
       lastAssistantUuid = (message as { uuid: string }).uuid;
+
+      // Emit assistant text blocks as streaming output for progressive display
+      const assistantMsg = message as { message?: { content?: Array<{ type: string; text?: string }> } };
+      if (assistantMsg.message?.content) {
+        const textParts = assistantMsg.message.content
+          .filter((c) => c.type === 'text' && c.text)
+          .map((c) => c.text!);
+        const text = textParts.join('').replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+        if (text) {
+          writeOutput({
+            status: 'success',
+            result: text,
+            newSessionId,
+            streaming: true,
+          });
+        }
+      }
     }
 
     if (message.type === 'system' && message.subtype === 'init') {

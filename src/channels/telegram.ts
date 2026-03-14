@@ -259,6 +259,65 @@ export class TelegramChannel implements Channel {
     }
   }
 
+  async sendMessageWithId(jid: string, text: string): Promise<string | undefined> {
+    if (!this.bot) {
+      logger.warn('Telegram bot not initialized');
+      return undefined;
+    }
+
+    try {
+      const numericId = jid.replace(/^tg:/, '');
+      const MAX_LENGTH = 4096;
+      const truncated = text.length > MAX_LENGTH ? text.slice(0, MAX_LENGTH) : text;
+
+      let sent;
+      try {
+        sent = await this.bot.api.sendMessage(numericId, truncated, {
+          parse_mode: 'Markdown',
+        });
+      } catch {
+        sent = await this.bot.api.sendMessage(numericId, truncated);
+      }
+
+      logger.info({ jid, messageId: sent.message_id }, 'Telegram message sent with ID');
+      return sent.message_id.toString();
+    } catch (err) {
+      logger.error({ jid, err }, 'Failed to send Telegram message with ID');
+      return undefined;
+    }
+  }
+
+  async editMessage(jid: string, messageId: string, text: string): Promise<void> {
+    if (!this.bot) {
+      logger.warn('Telegram bot not initialized');
+      return;
+    }
+
+    try {
+      const numericId = jid.replace(/^tg:/, '');
+      const msgId = parseInt(messageId, 10);
+      const MAX_LENGTH = 4096;
+      const truncated = text.length > MAX_LENGTH ? text.slice(0, MAX_LENGTH) : text;
+
+      try {
+        await this.bot.api.editMessageText(numericId, msgId, truncated, {
+          parse_mode: 'Markdown',
+        });
+      } catch (err) {
+        // Fallback: try plain text (Markdown parse failure)
+        // Telegram also throws "message is not modified" if text is identical — ignore that
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (errMsg.includes('message is not modified')) {
+          return;
+        }
+        await this.bot.api.editMessageText(numericId, msgId, truncated);
+      }
+      logger.debug({ jid, messageId }, 'Telegram message edited');
+    } catch (err) {
+      logger.error({ jid, messageId, err }, 'Failed to edit Telegram message');
+    }
+  }
+
   isConnected(): boolean {
     return this.bot !== null;
   }
