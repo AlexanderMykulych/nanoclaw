@@ -243,8 +243,9 @@ export class TelegramChannel implements Channel {
           'telegram',
           isGroup,
         );
-        // In groups, prepend trigger so voice messages always activate the bot
-        const triggerPrefix = isGroup ? `@${ASSISTANT_NAME} ` : '';
+        // In groups, prepend the group's trigger so voice messages always activate the bot
+        const groupTrigger = isGroup && group.trigger ? group.trigger.split('|')[0] : '';
+        const triggerPrefix = groupTrigger ? `${groupTrigger} ` : '';
         this.opts.onMessage(chatJid, {
           id: ctx.message.message_id.toString(),
           chat_jid: chatJid,
