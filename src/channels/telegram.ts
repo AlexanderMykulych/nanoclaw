@@ -4,10 +4,7 @@ import { Api, Bot } from 'grammy';
 import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
 import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
-import {
-  isTranscriptionAvailable,
-  transcribeAudio,
-} from '../transcription.js';
+import { isTranscriptionAvailable, transcribeAudio } from '../transcription.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import {
   Channel,
@@ -208,22 +205,40 @@ export class TelegramChannel implements Channel {
         const file = await ctx.getFile();
         const fileUrl = `https://api.telegram.org/file/bot${this.bot.token}/${file.file_path}`;
         const response = await fetch(fileUrl);
-        if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+        if (!response.ok)
+          throw new Error(`Download failed: ${response.status}`);
         const buffer = Buffer.from(await response.arrayBuffer());
         const text = await transcribeAudio(buffer);
         logger.info(
-          { chatJid: `tg:${ctx.chat.id}`, duration: ctx.message.voice.duration },
+          {
+            chatJid: `tg:${ctx.chat.id}`,
+            duration: ctx.message.voice.duration,
+          },
           `Voice transcribed (${text.length} chars)`,
         );
+        // Reply with the transcript so the user sees what was recognized
+        await ctx.reply(`Отримав наступний текст: ${text}`, {
+          reply_parameters: { message_id: ctx.message.message_id },
+        }).catch((e) => logger.warn({ err: e }, 'Failed to send transcript reply'));
         // Store as a regular message with the transcript
         const chatJid = `tg:${ctx.chat.id}`;
         const group = this.opts.registeredGroups()[chatJid];
         if (!group) return;
         const timestamp = new Date(ctx.message.date * 1000).toISOString();
         const senderName =
-          ctx.from?.first_name || ctx.from?.username || ctx.from?.id?.toString() || 'Unknown';
-        const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
-        this.opts.onChatMetadata(chatJid, timestamp, undefined, 'telegram', isGroup);
+          ctx.from?.first_name ||
+          ctx.from?.username ||
+          ctx.from?.id?.toString() ||
+          'Unknown';
+        const isGroup =
+          ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
+        this.opts.onChatMetadata(
+          chatJid,
+          timestamp,
+          undefined,
+          'telegram',
+          isGroup,
+        );
         this.opts.onMessage(chatJid, {
           id: ctx.message.message_id.toString(),
           chat_jid: chatJid,
