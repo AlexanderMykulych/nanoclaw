@@ -167,9 +167,12 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   // For non-main groups, check if trigger is required and present
   if (!isMainGroup && group.requiresTrigger !== false) {
     const allowlistCfg = loadSenderAllowlist();
+    const triggerRe = group.trigger
+      ? new RegExp(`^(?:${group.trigger})\\b`, 'i')
+      : TRIGGER_PATTERN;
     const hasTrigger = missedMessages.some(
       (m) =>
-        TRIGGER_PATTERN.test(m.content.trim()) &&
+        triggerRe.test(m.content.trim()) &&
         (m.is_from_me || isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
     );
     if (!hasTrigger) return true;
@@ -449,7 +452,11 @@ async function startMessageLoop(): Promise<void> {
             );
             if (!hasTrigger) {
               logger.debug(
-                { chatJid, trigger: group.trigger, messages: groupMessages.map(m => m.content.slice(0, 60)) },
+                {
+                  chatJid,
+                  trigger: group.trigger,
+                  messages: groupMessages.map((m) => m.content.slice(0, 60)),
+                },
                 'No trigger match, skipping group',
               );
               continue;
