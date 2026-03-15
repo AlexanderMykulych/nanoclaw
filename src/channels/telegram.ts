@@ -217,9 +217,13 @@ export class TelegramChannel implements Channel {
           `Voice transcribed (${text.length} chars)`,
         );
         // Reply with the transcript so the user sees what was recognized
-        await ctx.reply(`Отримав наступний текст: ${text}`, {
-          reply_parameters: { message_id: ctx.message.message_id },
-        }).catch((e) => logger.warn({ err: e }, 'Failed to send transcript reply'));
+        await ctx
+          .reply(`Отримав наступний текст: ${text}`, {
+            reply_parameters: { message_id: ctx.message.message_id },
+          })
+          .catch((e) =>
+            logger.warn({ err: e }, 'Failed to send transcript reply'),
+          );
         // Store as a regular message with the transcript
         const chatJid = `tg:${ctx.chat.id}`;
         const group = this.opts.registeredGroups()[chatJid];
@@ -239,12 +243,14 @@ export class TelegramChannel implements Channel {
           'telegram',
           isGroup,
         );
+        // In groups, prepend trigger so voice messages always activate the bot
+        const triggerPrefix = isGroup ? `@${ASSISTANT_NAME} ` : '';
         this.opts.onMessage(chatJid, {
           id: ctx.message.message_id.toString(),
           chat_jid: chatJid,
           sender: ctx.from?.id?.toString() || '',
           sender_name: senderName,
-          content: `[Voice: ${text}]`,
+          content: `${triggerPrefix}[Voice: ${text}]`,
           timestamp,
           is_from_me: false,
         });
