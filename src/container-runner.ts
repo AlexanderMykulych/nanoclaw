@@ -95,6 +95,16 @@ function buildVolumeMounts(
       containerPath: '/workspace/group',
       readonly: false,
     });
+
+    // Shadow the global directory from the read-only project root with a writable mount
+    const globalDir = path.join(GROUPS_DIR, 'global');
+    if (fs.existsSync(globalDir)) {
+      mounts.push({
+        hostPath: globalDir,
+        containerPath: '/workspace/project/groups/global',
+        readonly: false,
+      });
+    }
   } else {
     // Other groups only get their own folder
     mounts.push({
