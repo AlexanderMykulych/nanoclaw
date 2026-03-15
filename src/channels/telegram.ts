@@ -4,6 +4,10 @@ import { Api, Bot } from 'grammy';
 import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
 import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
+import {
+  isTranscriptionAvailable,
+  transcribeAudio,
+} from '../transcription.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import {
   Channel,
@@ -195,7 +199,45 @@ export class TelegramChannel implements Channel {
 
     this.bot.on('message:photo', (ctx) => storeNonText(ctx, '[Photo]'));
     this.bot.on('message:video', (ctx) => storeNonText(ctx, '[Video]'));
-    this.bot.on('message:voice', (ctx) => storeNonText(ctx, '[Voice message]'));
+    this.bot.on('message:voice', async (ctx) => {
+      if (!isTranscriptionAvailable() || !this.bot) {
+        storeNonText(ctx, '[Voice message]');
+        return;
+      }
+      try {
+        const file = await ctx.getFile();
+        const fileUrl = `https://api.telegram.org/file/bot${this.bot.token}/${file.file_path}`;
+        const response = await fetch(fileUrl);
+        if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+        const buffer = Buffer.from(await response.arrayBuffer());
+        const text = await transcribeAudio(buffer);
+        logger.info(
+          { chatJid: `tg:${ctx.chat.id}`, duration: ctx.message.voice.duration },
+          `Voice transcribed (${text.length} chars)`,
+        );
+        // Store as a regular message with the transcript
+        const chatJid = `tg:${ctx.chat.id}`;
+        const group = this.opts.registeredGroups()[chatJid];
+        if (!group) return;
+        const timestamp = new Date(ctx.message.date * 1000).toISOString();
+        const senderName =
+          ctx.from?.first_name || ctx.from?.username || ctx.from?.id?.toString() || 'Unknown';
+        const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
+        this.opts.onChatMetadata(chatJid, timestamp, undefined, 'telegram', isGroup);
+        this.opts.onMessage(chatJid, {
+          id: ctx.message.message_id.toString(),
+          chat_jid: chatJid,
+          sender: ctx.from?.id?.toString() || '',
+          sender_name: senderName,
+          content: `[Voice: ${text}]`,
+          timestamp,
+          is_from_me: false,
+        });
+      } catch (err) {
+        logger.warn({ err }, 'Voice transcription failed, using placeholder');
+        storeNonText(ctx, '[Voice message]');
+      }
+    });
     this.bot.on('message:audio', (ctx) => storeNonText(ctx, '[Audio]'));
     this.bot.on('message:document', (ctx) => {
       const name = ctx.message.document?.file_name || 'file';
@@ -259,7 +301,10 @@ export class TelegramChannel implements Channel {
     }
   }
 
-  async sendMessageWithId(jid: string, text: string): Promise<string | undefined> {
+  async sendMessageWithId(
+    jid: string,
+    text: string,
+  ): Promise<string | undefined> {
     if (!this.bot) {
       logger.warn('Telegram bot not initialized');
       return undefined;
@@ -268,7 +313,8 @@ export class TelegramChannel implements Channel {
     try {
       const numericId = jid.replace(/^tg:/, '');
       const MAX_LENGTH = 4096;
-      const truncated = text.length > MAX_LENGTH ? text.slice(0, MAX_LENGTH) : text;
+      const truncated =
+        text.length > MAX_LENGTH ? text.slice(0, MAX_LENGTH) : text;
 
       let sent;
       try {
@@ -279,7 +325,10 @@ export class TelegramChannel implements Channel {
         sent = await this.bot.api.sendMessage(numericId, truncated);
       }
 
-      logger.info({ jid, messageId: sent.message_id }, 'Telegram message sent with ID');
+      logger.info(
+        { jid, messageId: sent.message_id },
+        'Telegram message sent with ID',
+      );
       return sent.message_id.toString();
     } catch (err) {
       logger.error({ jid, err }, 'Failed to send Telegram message with ID');
@@ -287,7 +336,11 @@ export class TelegramChannel implements Channel {
     }
   }
 
-  async editMessage(jid: string, messageId: string, text: string): Promise<void> {
+  async editMessage(
+    jid: string,
+    messageId: string,
+    text: string,
+  ): Promise<void> {
     if (!this.bot) {
       logger.warn('Telegram bot not initialized');
       return;
@@ -297,7 +350,8 @@ export class TelegramChannel implements Channel {
       const numericId = jid.replace(/^tg:/, '');
       const msgId = parseInt(messageId, 10);
       const MAX_LENGTH = 4096;
-      const truncated = text.length > MAX_LENGTH ? text.slice(0, MAX_LENGTH) : text;
+      const truncated =
+        text.length > MAX_LENGTH ? text.slice(0, MAX_LENGTH) : text;
 
       try {
         await this.bot.api.editMessageText(numericId, msgId, truncated, {
