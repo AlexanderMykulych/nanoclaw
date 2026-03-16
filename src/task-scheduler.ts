@@ -183,20 +183,18 @@ async function runTask(
       (proc, containerName) =>
         deps.onProcess(task.chat_jid, proc, containerName, task.group_folder),
       async (streamedOutput: ContainerOutput) => {
-        // Skip streaming intermediate chunks — only forward final results.
-        // Streaming chunks are followed by a result with the same text,
-        // which would cause duplicate messages.
+        // Don't auto-forward results to user for scheduled tasks.
+        // Tasks use mcp__nanoclaw__send_message when they want to
+        // communicate. The result text is just a status for logging.
         if (streamedOutput.streaming) return;
 
         if (streamedOutput.result) {
           result = streamedOutput.result;
-          // Forward result to user (sendMessage handles formatting)
-          await deps.sendMessage(task.chat_jid, streamedOutput.result);
           scheduleClose();
         }
         if (streamedOutput.status === 'success') {
           deps.queue.notifyIdle(task.chat_jid);
-          scheduleClose(); // Close promptly even when result is null (e.g. IPC-only tasks)
+          scheduleClose();
         }
         if (streamedOutput.status === 'error') {
           error = streamedOutput.error || 'Unknown error';
