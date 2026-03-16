@@ -534,7 +534,7 @@ async function main(): Promise<void> {
   // Build initial prompt (drain any pending IPC messages too)
   let prompt = containerInput.prompt;
   if (containerInput.isScheduledTask) {
-    prompt = `[SCHEDULED TASK - The following message was sent automatically and is not coming directly from the user or group.]\n\n${prompt}`;
+    prompt = `[SCHEDULED TASK]\nRULES FOR THIS TASK:\n- Do NOT send acknowledgement messages like "Перевіряю...", "Готую...", "Зараз гляну..."\n- Do NOT use send_message to report progress or status\n- ONLY use send_message if the task result requires user notification (e.g. a report with data)\n- If there is nothing to report — stay completely silent, send ZERO messages\n\n${prompt}`;
   }
   const pending = drainIpcInput();
   if (pending.length > 0) {
