@@ -10,7 +10,7 @@ import http from 'http';
 import { URL } from 'url';
 
 const CREDENTIALS_PATH = 'store/google/credentials.json';
-const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'];
+const SCOPES = ['https://www.googleapis.com/auth/calendar'];
 const REDIRECT_PORT = 3333;
 // Desktop app uses http://localhost as redirect_uri (Google ignores port in matching)
 const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}`;

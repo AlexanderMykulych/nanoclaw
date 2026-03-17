@@ -69,6 +69,32 @@ async function calendarApi(
   return res.json();
 }
 
+async function calendarApiWrite(
+  endpoint: string,
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  body?: Record<string, unknown>,
+): Promise<unknown> {
+  const token = await getAccessToken();
+  const url = `https://www.googleapis.com/calendar/v3/${endpoint}`;
+
+  const res = await fetch(url, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Calendar API error ${res.status}: ${text}`);
+  }
+
+  if (method === 'DELETE') return { deleted: true };
+  return res.json();
+}
+
 const server = new McpServer({
   name: 'google_calendar',
   version: '1.0.0',
@@ -277,6 +303,151 @@ server.tool(
             events.length > 0
               ? JSON.stringify(events, null, 2)
               : `No events found for "${args.query}".`,
+        },
+      ],
+    };
+  },
+);
+
+server.tool(
+  'create_event',
+  'Create a new calendar event.',
+  {
+    summary: z.string().describe('Event title'),
+    start_time: z
+      .string()
+      .describe('Start time in ISO 8601 format (e.g. 2026-03-17T10:00:00+02:00) or YYYY-MM-DD for all-day'),
+    end_time: z
+      .string()
+      .describe('End time in ISO 8601 format or YYYY-MM-DD for all-day'),
+    description: z.string().optional().describe('Event description'),
+    location: z.string().optional().describe('Event location'),
+    calendar_id: z
+      .string()
+      .default('primary')
+      .describe('Calendar ID (use "primary" for the main calendar)'),
+  },
+  async (args) => {
+    const isAllDay = /^\d{4}-\d{2}-\d{2}$/.test(args.start_time);
+
+    const event: Record<string, unknown> = {
+      summary: args.summary,
+      start: isAllDay
+        ? { date: args.start_time }
+        : { dateTime: args.start_time, timeZone: timezone },
+      end: isAllDay
+        ? { date: args.end_time }
+        : { dateTime: args.end_time, timeZone: timezone },
+    };
+
+    if (args.description) event.description = args.description;
+    if (args.location) event.location = args.location;
+
+    const created = (await calendarApiWrite(
+      `calendars/${encodeURIComponent(args.calendar_id)}/events`,
+      'POST',
+      event,
+    )) as { id: string; htmlLink: string; summary: string };
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify(
+            { id: created.id, link: created.htmlLink, summary: created.summary },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  },
+);
+
+server.tool(
+  'update_event',
+  'Update an existing calendar event. Only provided fields will be changed.',
+  {
+    event_id: z.string().describe('Event ID to update'),
+    summary: z.string().optional().describe('New event title'),
+    start_time: z
+      .string()
+      .optional()
+      .describe('New start time (ISO 8601 or YYYY-MM-DD)'),
+    end_time: z
+      .string()
+      .optional()
+      .describe('New end time (ISO 8601 or YYYY-MM-DD)'),
+    description: z.string().optional().describe('New description'),
+    location: z.string().optional().describe('New location'),
+    calendar_id: z
+      .string()
+      .default('primary')
+      .describe('Calendar ID'),
+  },
+  async (args) => {
+    const patch: Record<string, unknown> = {};
+
+    if (args.summary) patch.summary = args.summary;
+    if (args.description !== undefined) patch.description = args.description;
+    if (args.location !== undefined) patch.location = args.location;
+
+    if (args.start_time) {
+      const isAllDay = /^\d{4}-\d{2}-\d{2}$/.test(args.start_time);
+      patch.start = isAllDay
+        ? { date: args.start_time }
+        : { dateTime: args.start_time, timeZone: timezone };
+    }
+
+    if (args.end_time) {
+      const isAllDay = /^\d{4}-\d{2}-\d{2}$/.test(args.end_time);
+      patch.end = isAllDay
+        ? { date: args.end_time }
+        : { dateTime: args.end_time, timeZone: timezone };
+    }
+
+    const updated = (await calendarApiWrite(
+      `calendars/${encodeURIComponent(args.calendar_id)}/events/${encodeURIComponent(args.event_id)}`,
+      'PATCH',
+      patch,
+    )) as { id: string; htmlLink: string; summary: string };
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify(
+            { id: updated.id, link: updated.htmlLink, summary: updated.summary },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  },
+);
+
+server.tool(
+  'delete_event',
+  'Delete a calendar event.',
+  {
+    event_id: z.string().describe('Event ID to delete'),
+    calendar_id: z
+      .string()
+      .default('primary')
+      .describe('Calendar ID'),
+  },
+  async (args) => {
+    await calendarApiWrite(
+      `calendars/${encodeURIComponent(args.calendar_id)}/events/${encodeURIComponent(args.event_id)}`,
+      'DELETE',
+    );
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `Event ${args.event_id} deleted successfully.`,
         },
       ],
     };
