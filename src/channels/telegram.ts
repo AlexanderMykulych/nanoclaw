@@ -1,7 +1,9 @@
+import fs from 'fs';
 import https from 'https';
+import path from 'path';
 import { Api, Bot } from 'grammy';
 
-import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
+import { ASSISTANT_NAME, GROUPS_DIR, TRIGGER_PATTERN } from '../config.js';
 import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
 import { isTranscriptionAvailable, transcribeAudio } from '../transcription.js';
@@ -39,6 +41,40 @@ async function sendTelegramMessage(
     // Fallback: send as plain text if Markdown parsing fails
     logger.debug({ err }, 'Markdown send failed, falling back to plain text');
     await api.sendMessage(chatId, text, options);
+  }
+}
+
+/**
+ * Download a file from Telegram and save it to the group's attachments directory.
+ * Returns the container-relative path (/workspace/group/attachments/...) or null on failure.
+ */
+async function downloadTelegramFile(
+  bot: Bot,
+  fileId: string,
+  groupFolder: string,
+  filename: string,
+): Promise<string | null> {
+  try {
+    const file = await bot.api.getFile(fileId);
+    if (!file.file_path) return null;
+
+    const fileUrl = `https://api.telegram.org/file/bot${bot.token}/${file.file_path}`;
+    const response = await fetch(fileUrl);
+    if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    const attachDir = path.join(GROUPS_DIR, groupFolder, 'attachments');
+    fs.mkdirSync(attachDir, { recursive: true });
+
+    const filePath = path.join(attachDir, filename);
+    fs.writeFileSync(filePath, buffer);
+
+    // Return the path as seen inside the container
+    return `/workspace/group/attachments/${filename}`;
+  } catch (err) {
+    logger.warn({ err, fileId, groupFolder }, 'Failed to download Telegram file');
+    return null;
   }
 }
 
@@ -194,7 +230,42 @@ export class TelegramChannel implements Channel {
       });
     };
 
-    this.bot.on('message:photo', (ctx) => storeNonText(ctx, '[Photo]'));
+    this.bot.on('message:photo', async (ctx) => {
+      if (!this.bot) {
+        storeNonText(ctx, '[Photo]');
+        return;
+      }
+      const chatJid = `tg:${ctx.chat.id}`;
+      const group = this.opts.registeredGroups()[chatJid];
+      if (!group) return;
+
+      try {
+        // Get the largest photo (last in the array)
+        const photos = ctx.message.photo;
+        const largest = photos[photos.length - 1];
+        const ext = 'jpg';
+        const filename = `photo-${Date.now()}.${ext}`;
+
+        const containerPath = await downloadTelegramFile(
+          this.bot,
+          largest.file_id,
+          group.folder,
+          filename,
+        );
+
+        if (containerPath) {
+          const caption = ctx.message.caption ? ` ${ctx.message.caption}` : '';
+          storeNonText(ctx, `[Image sent by user. Use the Read tool to view it: ${containerPath}]${caption}`);
+          logger.info({ chatJid, path: containerPath }, 'Photo downloaded');
+        } else {
+          storeNonText(ctx, '[Photo - download failed]');
+        }
+      } catch (err) {
+        logger.warn({ err }, 'Photo download failed');
+        storeNonText(ctx, '[Photo - download failed]');
+      }
+    });
+
     this.bot.on('message:video', (ctx) => storeNonText(ctx, '[Video]'));
     this.bot.on('message:voice', async (ctx) => {
       if (!isTranscriptionAvailable() || !this.bot) {
@@ -244,7 +315,8 @@ export class TelegramChannel implements Channel {
           isGroup,
         );
         // In groups, prepend the group's trigger so voice messages always activate the bot
-        const groupTrigger = isGroup && group.trigger ? group.trigger.split('|')[0] : '';
+        const groupTrigger =
+          isGroup && group.trigger ? group.trigger.split('|')[0] : '';
         const triggerPrefix = groupTrigger ? `${groupTrigger} ` : '';
         this.opts.onMessage(chatJid, {
           id: ctx.message.message_id.toString(),
@@ -261,9 +333,54 @@ export class TelegramChannel implements Channel {
       }
     });
     this.bot.on('message:audio', (ctx) => storeNonText(ctx, '[Audio]'));
-    this.bot.on('message:document', (ctx) => {
-      const name = ctx.message.document?.file_name || 'file';
-      storeNonText(ctx, `[Document: ${name}]`);
+    this.bot.on('message:document', async (ctx) => {
+      if (!this.bot) {
+        storeNonText(ctx, '[Document]');
+        return;
+      }
+      const chatJid = `tg:${ctx.chat.id}`;
+      const group = this.opts.registeredGroups()[chatJid];
+      if (!group) return;
+
+      const doc = ctx.message.document;
+      if (!doc) {
+        storeNonText(ctx, '[Document]');
+        return;
+      }
+
+      const originalName = doc.file_name || 'file';
+      // Sanitize filename and add timestamp to avoid collisions
+      const safeName = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const filename = `${Date.now()}-${safeName}`;
+
+      try {
+        const containerPath = await downloadTelegramFile(
+          this.bot,
+          doc.file_id,
+          group.folder,
+          filename,
+        );
+
+        if (containerPath) {
+          const ext = path.extname(originalName).toLowerCase();
+          const caption = ctx.message.caption ? ` ${ctx.message.caption}` : '';
+          let hint: string;
+          if (ext === '.pdf') {
+            hint = `[PDF document "${originalName}" saved. Use the Read tool to view it: ${containerPath}]${caption}`;
+          } else if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].includes(ext)) {
+            hint = `[Image "${originalName}" saved. Use the Read tool to view it: ${containerPath}]${caption}`;
+          } else {
+            hint = `[File "${originalName}" saved at ${containerPath}. Use the Read tool to view it.]${caption}`;
+          }
+          storeNonText(ctx, hint);
+          logger.info({ chatJid, path: containerPath, originalName }, 'Document downloaded');
+        } else {
+          storeNonText(ctx, `[Document: ${originalName} - download failed]`);
+        }
+      } catch (err) {
+        logger.warn({ err, originalName }, 'Document download failed');
+        storeNonText(ctx, `[Document: ${originalName} - download failed]`);
+      }
     });
     this.bot.on('message:sticker', (ctx) => {
       const emoji = ctx.message.sticker?.emoji || '';
