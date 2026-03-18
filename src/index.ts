@@ -52,6 +52,7 @@ import {
   loadSenderAllowlist,
   shouldDropMessage,
 } from './sender-allowlist.js';
+import { syncObsidianTasks } from './obsidian-task-sync.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
@@ -616,6 +617,10 @@ async function main(): Promise<void> {
       if (text) await channel.sendMessage(jid, text);
     },
   });
+  // Sync Obsidian-defined scheduled tasks at startup and every 5 minutes
+  syncObsidianTasks(registeredGroups);
+  setInterval(() => syncObsidianTasks(registeredGroups), 5 * 60 * 1000);
+
   startIpcWatcher({
     sendMessage: (jid, text) => {
       const channel = findChannel(channels, jid);
