@@ -421,7 +421,8 @@ async function runQuery(
         'TodoWrite', 'ToolSearch', 'Skill',
         'NotebookEdit',
         'mcp__nanoclaw__*',
-        'mcp__google_calendar__*'
+        'mcp__google_calendar__*',
+        'mcp__gemini__*'
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -447,6 +448,17 @@ async function runQuery(
                   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || '',
                   GOOGLE_REFRESH_TOKEN: process.env.GOOGLE_REFRESH_TOKEN || '',
                   GOOGLE_CALENDAR_TIMEZONE: process.env.GOOGLE_CALENDAR_TIMEZONE || 'Europe/Kyiv',
+                },
+              },
+            }
+          : {}),
+        ...(process.env.GEMINI_API_KEY
+          ? {
+              gemini: {
+                command: 'node',
+                args: [path.join(path.dirname(mcpServerPath), 'gemini-mcp-stdio.js')],
+                env: {
+                  GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
                 },
               },
             }

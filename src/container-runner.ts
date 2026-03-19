@@ -273,6 +273,12 @@ function buildContainerArgs(
     args.push('-e', `GOOGLE_CALENDAR_TIMEZONE=${TIMEZONE}`);
   }
 
+  // Pass Gemini API key if configured
+  const geminiEnv = readEnvFile(['GEMINI_API_KEY']);
+  if (geminiEnv.GEMINI_API_KEY) {
+    args.push('-e', `GEMINI_API_KEY=${geminiEnv.GEMINI_API_KEY}`);
+  }
+
   // Runtime-specific args for host gateway resolution
   args.push(...hostGatewayArgs());
 
