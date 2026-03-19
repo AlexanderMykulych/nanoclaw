@@ -36,6 +36,7 @@ interface ObsidianTask {
   group: string;
   status: 'active' | 'paused';
   prompt: string;
+  model?: string;
 }
 
 /**
@@ -93,7 +94,13 @@ export function parseSchedule(schedule: string): {
   const weeklyMatch = s.match(/^weekly\s+([\w,]+)\s+(\d{1,2}:\d{2})$/i);
   if (weeklyMatch) {
     const dayMap: Record<string, string> = {
-      sun: '0', mon: '1', tue: '2', wed: '3', thu: '4', fri: '5', sat: '6',
+      sun: '0',
+      mon: '1',
+      tue: '2',
+      wed: '3',
+      thu: '4',
+      fri: '5',
+      sat: '6',
     };
     const days = weeklyMatch[1]
       .split(',')
@@ -135,6 +142,7 @@ function parseMarkdownTask(
     const schedule = getValue('schedule');
     const group = getValue('group');
     const status = getValue('status') as 'active' | 'paused' | undefined;
+    const model = getValue('model');
 
     if (!schedule || !group) {
       logger.warn(
@@ -157,6 +165,7 @@ function parseMarkdownTask(
       group,
       status: status || 'active',
       prompt: body,
+      model,
     };
   } catch (err) {
     logger.warn({ err, filePath }, 'Failed to parse Obsidian task file');
@@ -220,9 +229,7 @@ export function syncObsidianTasks(
   // Read all .md files from the tasks directory
   let files: string[];
   try {
-    files = fs
-      .readdirSync(tasksDir)
-      .filter((f) => f.endsWith('.md'));
+    files = fs.readdirSync(tasksDir).filter((f) => f.endsWith('.md'));
   } catch {
     return;
   }
@@ -280,6 +287,7 @@ export function syncObsidianTasks(
         next_run: nextRun,
         status: obsTask.status,
         created_at: new Date().toISOString(),
+        model: obsTask.model,
       });
 
       logger.info(
@@ -306,6 +314,9 @@ export function syncObsidianTasks(
           changes.next_run = computeNextRunFromCron(parsed.value);
         }
       }
+      if ((existingTask.model || null) !== (obsTask.model || null)) {
+        changes.model = obsTask.model || null;
+      }
 
       if (Object.keys(changes).length > 0) {
         updateTask(id, changes as Parameters<typeof updateTask>[1]);
@@ -321,7 +332,10 @@ export function syncObsidianTasks(
   for (const dbTask of existingObsTasks) {
     if (!obsidianTasks.has(dbTask.id)) {
       deleteTask(dbTask.id);
-      logger.info({ taskId: dbTask.id }, 'Obsidian task deleted (file removed)');
+      logger.info(
+        { taskId: dbTask.id },
+        'Obsidian task deleted (file removed)',
+      );
     }
   }
 }

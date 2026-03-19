@@ -27,6 +27,7 @@ interface ContainerInput {
   isMain: boolean;
   isScheduledTask?: boolean;
   assistantName?: string;
+  model?: string;
 }
 
 interface ContainerOutput {
@@ -390,6 +391,16 @@ async function runQuery(
     log(`Additional directories: ${extraDirs.join(', ')}`);
   }
 
+  // Configure model and thinking based on container input
+  const modelOptions: Record<string, unknown> = {};
+  if (containerInput.model) {
+    modelOptions.model = containerInput.model;
+    // Enable adaptive thinking for Opus/Sonnet 4.6
+    if (containerInput.model.includes('opus-4-6') || containerInput.model.includes('sonnet-4-6')) {
+      modelOptions.thinking = { type: 'adaptive' };
+    }
+  }
+
   for await (const message of query({
     prompt: stream,
     options: {
@@ -397,6 +408,7 @@ async function runQuery(
       additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
       resume: sessionId,
       resumeSessionAt: resumeAt,
+      ...modelOptions,
       systemPrompt: globalClaudeMd
         ? { type: 'preset' as const, preset: 'claude_code' as const, append: globalClaudeMd }
         : undefined,
