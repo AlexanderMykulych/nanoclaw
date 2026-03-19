@@ -9,7 +9,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 
 const apiKey = process.env.GEMINI_API_KEY!;
-const defaultModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const defaultModel = process.env.GEMINI_MODEL || 'gemini-2.5-pro';
 
 async function callGemini(
   prompt: string,
