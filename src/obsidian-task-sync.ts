@@ -182,10 +182,9 @@ function computeNextRunFromCron(cronExpr: string): string {
 }
 
 /**
- * Find the Obsidian tasks directory on the host filesystem.
- * Looks for the configured additional mount path that contains Memory_Obsidian.
+ * Find the Obsidian vault root (hostPath) from registered group mounts.
  */
-function findObsidianTasksDir(
+export function findObsidianVaultRoot(
   groups: Record<string, RegisteredGroup>,
 ): string | null {
   for (const group of Object.values(groups)) {
@@ -193,18 +192,30 @@ function findObsidianTasksDir(
     if (!mounts) continue;
     for (const mount of mounts) {
       if (mount.hostPath.includes('Memory_Obsidian')) {
-        const tasksDir = path.join(mount.hostPath, OBSIDIAN_TASKS_SUBPATH);
-        if (fs.existsSync(tasksDir)) {
-          return tasksDir;
-        }
-        // Try creating the dir if parent exists
-        const parentDir = path.join(mount.hostPath, 'Memory/mao');
-        if (fs.existsSync(parentDir)) {
-          fs.mkdirSync(tasksDir, { recursive: true });
-          return tasksDir;
-        }
+        return mount.hostPath;
       }
     }
+  }
+  return null;
+}
+
+/**
+ * Find the Obsidian tasks directory on the host filesystem.
+ */
+function findObsidianTasksDir(
+  groups: Record<string, RegisteredGroup>,
+): string | null {
+  const vaultRoot = findObsidianVaultRoot(groups);
+  if (!vaultRoot) return null;
+
+  const tasksDir = path.join(vaultRoot, OBSIDIAN_TASKS_SUBPATH);
+  if (fs.existsSync(tasksDir)) {
+    return tasksDir;
+  }
+  const parentDir = path.join(vaultRoot, 'Memory/mao');
+  if (fs.existsSync(parentDir)) {
+    fs.mkdirSync(tasksDir, { recursive: true });
+    return tasksDir;
   }
   return null;
 }
