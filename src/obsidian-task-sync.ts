@@ -37,6 +37,7 @@ interface ObsidianTask {
   status: 'active' | 'paused';
   prompt: string;
   model?: string;
+  pre_check?: string;
 }
 
 /**
@@ -143,6 +144,7 @@ function parseMarkdownTask(
     const group = getValue('group');
     const status = getValue('status') as 'active' | 'paused' | undefined;
     const model = getValue('model');
+    const pre_check = getValue('pre_check');
 
     if (!schedule || !group) {
       logger.warn(
@@ -166,6 +168,7 @@ function parseMarkdownTask(
       status: status || 'active',
       prompt: body,
       model,
+      pre_check,
     };
   } catch (err) {
     logger.warn({ err, filePath }, 'Failed to parse Obsidian task file');
@@ -299,6 +302,7 @@ export function syncObsidianTasks(
         status: obsTask.status,
         created_at: new Date().toISOString(),
         model: obsTask.model,
+        pre_check: obsTask.pre_check,
       });
 
       logger.info(
@@ -327,6 +331,9 @@ export function syncObsidianTasks(
       }
       if ((existingTask.model || null) !== (obsTask.model || null)) {
         changes.model = obsTask.model || null;
+      }
+      if ((existingTask.pre_check || null) !== (obsTask.pre_check || null)) {
+        changes.pre_check = obsTask.pre_check || null;
       }
 
       if (Object.keys(changes).length > 0) {
