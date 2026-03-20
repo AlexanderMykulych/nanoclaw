@@ -283,12 +283,15 @@ function buildContainerArgs(
   args.push(...hostGatewayArgs());
 
   // Run as host user so bind-mounted files are accessible.
-  // Skip when running as root (uid 0), as the container's node user (uid 1000),
-  // or when getuid is unavailable (native Windows without WSL).
+  // When running as root (uid 0), use the container's node user (1000:1000)
+  // to avoid creating root-owned files on bind mounts.
+  // Skip when getuid is unavailable (native Windows without WSL).
   const hostUid = process.getuid?.();
   const hostGid = process.getgid?.();
-  if (hostUid != null && hostUid !== 0 && hostUid !== 1000) {
-    args.push('--user', `${hostUid}:${hostGid}`);
+  if (hostUid != null && hostUid !== 1000) {
+    const uid = hostUid === 0 ? 1000 : hostUid;
+    const gid = hostGid === 0 ? 1000 : (hostGid ?? uid);
+    args.push('--user', `${uid}:${gid}`);
     args.push('-e', 'HOME=/home/node');
   }
 
