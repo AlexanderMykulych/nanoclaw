@@ -95,9 +95,14 @@ function createSchema(database: Database.Database): void {
 
   // Add model column to scheduled_tasks if it doesn't exist
   try {
-    database.exec(
-      `ALTER TABLE scheduled_tasks ADD COLUMN model TEXT`,
-    );
+    database.exec(`ALTER TABLE scheduled_tasks ADD COLUMN model TEXT`);
+  } catch {
+    /* column already exists */
+  }
+
+  // Add pre_check column to scheduled_tasks if it doesn't exist
+  try {
+    database.exec(`ALTER TABLE scheduled_tasks ADD COLUMN pre_check TEXT`);
   } catch {
     /* column already exists */
   }
@@ -377,8 +382,8 @@ export function createTask(
 ): void {
   db.prepare(
     `
-    INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, next_run, status, created_at, model)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, next_run, status, created_at, model, pre_check)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     task.id,
@@ -392,6 +397,7 @@ export function createTask(
     task.status,
     task.created_at,
     task.model || null,
+    task.pre_check || null,
   );
 }
 
@@ -420,7 +426,13 @@ export function updateTask(
   updates: Partial<
     Pick<
       ScheduledTask,
-      'prompt' | 'schedule_type' | 'schedule_value' | 'next_run' | 'status' | 'model'
+      | 'prompt'
+      | 'schedule_type'
+      | 'schedule_value'
+      | 'next_run'
+      | 'status'
+      | 'model'
+      | 'pre_check'
     >
   >,
 ): void {
@@ -450,6 +462,10 @@ export function updateTask(
   if (updates.model !== undefined) {
     fields.push('model = ?');
     values.push(updates.model);
+  }
+  if (updates.pre_check !== undefined) {
+    fields.push('pre_check = ?');
+    values.push(updates.pre_check);
   }
 
   if (fields.length === 0) return;
