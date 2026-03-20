@@ -1,9 +1,13 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { _initTestDatabase, createTask, getTaskById } from './db.js';
 import {
   _resetSchedulerLoopForTests,
   computeNextRun,
+  runPreCheck,
   startSchedulerLoop,
 } from './task-scheduler.js';
 
@@ -125,5 +129,83 @@ describe('task scheduler', () => {
     const offset =
       (new Date(nextRun!).getTime() - new Date(scheduledTime).getTime()) % ms;
     expect(offset).toBe(0);
+  });
+});
+
+describe('runPreCheck', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'precheck-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns run: false when script outputs run: false', async () => {
+    const scriptPath = path.join(tmpDir, 'check.sh');
+    fs.writeFileSync(
+      scriptPath,
+      '#!/bin/bash\necho \'{"run": false, "reason": "nothing to do"}\'\n',
+    );
+
+    const result = await runPreCheck(scriptPath, tmpDir);
+
+    expect(result.run).toBe(false);
+    expect(result.reason).toBe('nothing to do');
+  });
+
+  it('returns run: true when script approves', async () => {
+    const scriptPath = path.join(tmpDir, 'check.sh');
+    fs.writeFileSync(
+      scriptPath,
+      '#!/bin/bash\necho \'{"run": true, "reason": "3 files found"}\'\n',
+    );
+
+    const result = await runPreCheck(scriptPath, tmpDir);
+
+    expect(result.run).toBe(true);
+    expect(result.reason).toBe('3 files found');
+  });
+
+  it('returns run: false when script does not exist', async () => {
+    const result = await runPreCheck('/nonexistent/script.sh', '/tmp');
+
+    expect(result.run).toBe(false);
+    expect(result.reason).toMatch(/not found/i);
+  });
+
+  it('returns run: false when script exits with error', async () => {
+    const scriptPath = path.join(tmpDir, 'fail.sh');
+    fs.writeFileSync(scriptPath, '#!/bin/bash\nexit 1\n');
+
+    const result = await runPreCheck(scriptPath, tmpDir);
+
+    expect(result.run).toBe(false);
+    expect(result.reason).toMatch(/error/i);
+  });
+
+  it('returns run: false when script outputs invalid JSON', async () => {
+    const scriptPath = path.join(tmpDir, 'bad.sh');
+    fs.writeFileSync(scriptPath, '#!/bin/bash\necho "not json"\n');
+
+    const result = await runPreCheck(scriptPath, tmpDir);
+
+    expect(result.run).toBe(false);
+    expect(result.reason).toMatch(/invalid JSON/i);
+  });
+
+  it('passes vault root as $1 to the script', async () => {
+    const scriptPath = path.join(tmpDir, 'echo-arg.sh');
+    fs.writeFileSync(
+      scriptPath,
+      '#!/bin/bash\necho "{\\\"run\\\": true, \\\"reason\\\": \\\"vault=$1\\\"}"\n',
+    );
+
+    const result = await runPreCheck(scriptPath, '/my/vault');
+
+    expect(result.run).toBe(true);
+    expect(result.reason).toBe('vault=/my/vault');
   });
 });

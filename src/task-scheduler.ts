@@ -1,8 +1,14 @@
-import { ChildProcess } from 'child_process';
+import { ChildProcess, execFile } from 'child_process';
 import { CronExpressionParser } from 'cron-parser';
 import fs from 'fs';
+import path from 'path';
 
-import { ASSISTANT_NAME, SCHEDULER_POLL_INTERVAL, TIMEZONE } from './config.js';
+import {
+  ASSISTANT_NAME,
+  PRE_CHECK_TIMEOUT_MS,
+  SCHEDULER_POLL_INTERVAL,
+  TIMEZONE,
+} from './config.js';
 import {
   ContainerOutput,
   runContainerAgent,
@@ -19,6 +25,7 @@ import {
 import { GroupQueue } from './group-queue.js';
 import { resolveGroupFolderPath } from './group-folder.js';
 import { logger } from './logger.js';
+import { findObsidianVaultRoot } from './obsidian-task-sync.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
 
 /**
@@ -73,6 +80,54 @@ export interface SchedulerDependencies {
     groupFolder: string,
   ) => void;
   sendMessage: (jid: string, text: string) => Promise<void>;
+}
+
+export interface PreCheckResult {
+  run: boolean;
+  reason: string;
+}
+
+export async function runPreCheck(
+  scriptPath: string,
+  vaultRoot: string,
+): Promise<PreCheckResult> {
+  return new Promise((resolve) => {
+    if (!fs.existsSync(scriptPath)) {
+      resolve({
+        run: false,
+        reason: `Pre-check script not found: ${scriptPath}`,
+      });
+      return;
+    }
+
+    execFile(
+      'bash',
+      [scriptPath, vaultRoot],
+      { timeout: PRE_CHECK_TIMEOUT_MS },
+      (error, stdout) => {
+        if (error) {
+          resolve({
+            run: false,
+            reason: `Pre-check error: ${error.message}`,
+          });
+          return;
+        }
+
+        try {
+          const result = JSON.parse(stdout.trim());
+          resolve({
+            run: Boolean(result.run),
+            reason: result.reason || (result.run ? 'approved' : 'skipped'),
+          });
+        } catch {
+          resolve({
+            run: false,
+            reason: `Pre-check invalid JSON: ${stdout.trim().slice(0, 200)}`,
+          });
+        }
+      },
+    );
+  });
 }
 
 async function runTask(
@@ -145,6 +200,49 @@ async function runTask(
       next_run: t.next_run,
     })),
   );
+
+  // Pre-check: run lightweight script before launching agent
+  if (task.pre_check) {
+    const vaultRoot = findObsidianVaultRoot(deps.registeredGroups());
+    if (!vaultRoot) {
+      logger.warn(
+        { taskId: task.id },
+        'Pre-check configured but Obsidian vault not found',
+      );
+    } else {
+      const scriptPath = path.resolve(vaultRoot, task.pre_check);
+      const preCheckResult = await runPreCheck(scriptPath, vaultRoot);
+
+      if (!preCheckResult.run) {
+        logger.info(
+          { taskId: task.id, reason: preCheckResult.reason },
+          'Task skipped by pre-check',
+        );
+
+        logTaskRun({
+          task_id: task.id,
+          run_at: new Date().toISOString(),
+          duration_ms: Date.now() - startTime,
+          status: 'skipped',
+          result: preCheckResult.reason,
+          error: null,
+        });
+
+        const nextRun = computeNextRun(task);
+        updateTaskAfterRun(
+          task.id,
+          nextRun,
+          `Skipped: ${preCheckResult.reason}`,
+        );
+        return;
+      }
+
+      logger.info(
+        { taskId: task.id, reason: preCheckResult.reason },
+        'Pre-check passed, launching agent',
+      );
+    }
+  }
 
   let result: string | null = null;
   let error: string | null = null;
