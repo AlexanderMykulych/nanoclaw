@@ -100,8 +100,11 @@ export async function runPreCheck(
       return;
     }
 
+    const ext = path.extname(scriptPath).toLowerCase();
+    const runner = ext === '.js' || ext === '.mjs' ? 'node' : 'bash';
+
     execFile(
-      'bash',
+      runner,
       [scriptPath, vaultRoot],
       { timeout: PRE_CHECK_TIMEOUT_MS },
       (error, stdout) => {

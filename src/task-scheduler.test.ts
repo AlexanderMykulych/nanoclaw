@@ -208,4 +208,17 @@ describe('runPreCheck', () => {
     expect(result.run).toBe(true);
     expect(result.reason).toBe('vault=/my/vault');
   });
+
+  it('runs .js files with node', async () => {
+    const scriptPath = path.join(tmpDir, 'check.js');
+    fs.writeFileSync(
+      scriptPath,
+      'console.log(JSON.stringify({ run: true, reason: "node works, vault=" + process.argv[2] }));\n',
+    );
+
+    const result = await runPreCheck(scriptPath, '/my/vault');
+
+    expect(result.run).toBe(true);
+    expect(result.reason).toBe('node works, vault=/my/vault');
+  });
 });
