@@ -504,18 +504,20 @@ export class TelegramChannel implements Channel {
     }
 
     try {
-      const numericId = jid.replace(/^tg:/, '');
+      const { chatId, threadId } = parseThreadJid(jid);
+      const options = threadId ? { message_thread_id: threadId } : {};
 
       // Telegram has a 4096 character limit per message — split if needed
       const MAX_LENGTH = 4096;
       if (text.length <= MAX_LENGTH) {
-        await sendTelegramMessage(this.bot.api, numericId, text);
+        await sendTelegramMessage(this.bot.api, chatId, text, options);
       } else {
         for (let i = 0; i < text.length; i += MAX_LENGTH) {
           await sendTelegramMessage(
             this.bot.api,
-            numericId,
+            chatId,
             text.slice(i, i + MAX_LENGTH),
+            options,
           );
         }
       }
@@ -535,18 +537,20 @@ export class TelegramChannel implements Channel {
     }
 
     try {
-      const numericId = jid.replace(/^tg:/, '');
+      const { chatId, threadId } = parseThreadJid(jid);
       const MAX_LENGTH = 4096;
       const truncated =
         text.length > MAX_LENGTH ? text.slice(0, MAX_LENGTH) : text;
+      const threadOpts = threadId ? { message_thread_id: threadId } : {};
 
       let sent;
       try {
-        sent = await this.bot.api.sendMessage(numericId, truncated, {
+        sent = await this.bot.api.sendMessage(chatId, truncated, {
           parse_mode: 'Markdown',
+          ...threadOpts,
         });
       } catch {
-        sent = await this.bot.api.sendMessage(numericId, truncated);
+        sent = await this.bot.api.sendMessage(chatId, truncated, threadOpts);
       }
 
       logger.info(
@@ -571,14 +575,14 @@ export class TelegramChannel implements Channel {
     }
 
     try {
-      const numericId = jid.replace(/^tg:/, '');
+      const { chatId } = parseThreadJid(jid);
       const msgId = parseInt(messageId, 10);
       const MAX_LENGTH = 4096;
       const truncated =
         text.length > MAX_LENGTH ? text.slice(0, MAX_LENGTH) : text;
 
       try {
-        await this.bot.api.editMessageText(numericId, msgId, truncated, {
+        await this.bot.api.editMessageText(chatId, msgId, truncated, {
           parse_mode: 'Markdown',
         });
       } catch (err) {
@@ -588,7 +592,7 @@ export class TelegramChannel implements Channel {
         if (errMsg.includes('message is not modified')) {
           return;
         }
-        await this.bot.api.editMessageText(numericId, msgId, truncated);
+        await this.bot.api.editMessageText(chatId, msgId, truncated);
       }
       logger.debug({ jid, messageId }, 'Telegram message edited');
     } catch (err) {
@@ -615,8 +619,9 @@ export class TelegramChannel implements Channel {
   async setTyping(jid: string, isTyping: boolean): Promise<void> {
     if (!this.bot || !isTyping) return;
     try {
-      const numericId = jid.replace(/^tg:/, '');
-      await this.bot.api.sendChatAction(numericId, 'typing');
+      const { chatId, threadId } = parseThreadJid(jid);
+      const opts = threadId ? { message_thread_id: threadId } : {};
+      await this.bot.api.sendChatAction(chatId, 'typing', opts);
     } catch (err) {
       logger.debug({ jid, err }, 'Failed to send Telegram typing indicator');
     }
