@@ -19,6 +19,29 @@ export interface TelegramChannelOpts {
   onMessage: OnInboundMessage;
   onChatMetadata: OnChatMetadata;
   registeredGroups: () => Record<string, RegisteredGroup>;
+  registerGroup?: (jid: string, group: RegisteredGroup) => void;
+}
+
+/**
+ * Parse a Telegram JID into chat ID and optional thread ID.
+ * Thread JID format: tg:{chatId}_{threadId}
+ */
+export function parseThreadJid(jid: string): {
+  chatId: string;
+  threadId?: number;
+} {
+  const numeric = jid.replace(/^tg:/, '');
+  const underscoreIdx = numeric.lastIndexOf('_');
+  if (underscoreIdx > 0) {
+    const threadId = parseInt(numeric.substring(underscoreIdx + 1), 10);
+    if (!isNaN(threadId)) {
+      return {
+        chatId: numeric.substring(0, underscoreIdx),
+        threadId,
+      };
+    }
+  }
+  return { chatId: numeric };
 }
 
 /**
@@ -73,7 +96,10 @@ async function downloadTelegramFile(
     // Return the path as seen inside the container
     return `/workspace/group/attachments/${filename}`;
   } catch (err) {
-    logger.warn({ err, fileId, groupFolder }, 'Failed to download Telegram file');
+    logger.warn(
+      { err, fileId, groupFolder },
+      'Failed to download Telegram file',
+    );
     return null;
   }
 }
@@ -255,7 +281,10 @@ export class TelegramChannel implements Channel {
 
         if (containerPath) {
           const caption = ctx.message.caption ? ` ${ctx.message.caption}` : '';
-          storeNonText(ctx, `[Image sent by user. Use the Read tool to view it: ${containerPath}]${caption}`);
+          storeNonText(
+            ctx,
+            `[Image sent by user. Use the Read tool to view it: ${containerPath}]${caption}`,
+          );
           logger.info({ chatJid, path: containerPath }, 'Photo downloaded');
         } else {
           storeNonText(ctx, '[Photo - download failed]');
@@ -367,13 +396,18 @@ export class TelegramChannel implements Channel {
           let hint: string;
           if (ext === '.pdf') {
             hint = `[PDF document "${originalName}" saved. Use the Read tool to view it: ${containerPath}]${caption}`;
-          } else if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].includes(ext)) {
+          } else if (
+            ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].includes(ext)
+          ) {
             hint = `[Image "${originalName}" saved. Use the Read tool to view it: ${containerPath}]${caption}`;
           } else {
             hint = `[File "${originalName}" saved at ${containerPath}. Use the Read tool to view it.]${caption}`;
           }
           storeNonText(ctx, hint);
-          logger.info({ chatJid, path: containerPath, originalName }, 'Document downloaded');
+          logger.info(
+            { chatJid, path: containerPath, originalName },
+            'Document downloaded',
+          );
         } else {
           storeNonText(ctx, `[Document: ${originalName} - download failed]`);
         }
