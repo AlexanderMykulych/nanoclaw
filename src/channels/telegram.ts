@@ -116,6 +116,49 @@ export class TelegramChannel implements Channel {
     this.opts = opts;
   }
 
+  /**
+   * Build JID for a message, handling thread awareness.
+   * Returns thread JID if in a forum thread, parent JID otherwise.
+   * Auto-registers thread groups when first message arrives.
+   */
+  private buildJid(ctx: any): string {
+    const parentJid = `tg:${ctx.chat.id}`;
+    const threadId = ctx.message?.message_thread_id;
+
+    // No thread or General topic (threadId=1) → use parent JID
+    if (!threadId || threadId === 1) return parentJid;
+
+    const threadJid = `tg:${ctx.chat.id}_${threadId}`;
+
+    // Already registered → use thread JID
+    if (this.opts.registeredGroups()[threadJid]) return threadJid;
+
+    // Check if parent is registered for auto-registration
+    const parentGroup = this.opts.registeredGroups()[parentJid];
+    if (!parentGroup || !this.opts.registerGroup) return parentJid;
+
+    // Auto-register thread as independent group
+    try {
+      this.opts.registerGroup(threadJid, {
+        name: `Thread ${threadId}`,
+        folder: `${parentGroup.folder}_t${threadId}`,
+        trigger: '',
+        requiresTrigger: false,
+        added_at: new Date().toISOString(),
+        isMain: false,
+      });
+      logger.info(
+        { threadJid, parentJid, threadId },
+        'Auto-registered Telegram thread as group',
+      );
+    } catch (err) {
+      logger.warn({ threadJid, err }, 'Failed to auto-register thread');
+      return parentJid;
+    }
+
+    return threadJid;
+  }
+
   async connect(): Promise<void> {
     this.bot = new Bot(this.botToken, {
       client: {
@@ -127,15 +170,23 @@ export class TelegramChannel implements Channel {
     this.bot.command('chatid', (ctx) => {
       const chatId = ctx.chat.id;
       const chatType = ctx.chat.type;
+      const threadId = ctx.message?.message_thread_id;
       const chatName =
         chatType === 'private'
           ? ctx.from?.first_name || 'Private'
           : (ctx.chat as any).title || 'Unknown';
 
-      ctx.reply(
-        `Chat ID: \`tg:${chatId}\`\nName: ${chatName}\nType: ${chatType}`,
-        { parse_mode: 'Markdown' },
-      );
+      if (threadId && threadId !== 1) {
+        ctx.reply(
+          `Chat ID: \`tg:${chatId}_${threadId}\`\nName: ${chatName}\nType: thread`,
+          { parse_mode: 'Markdown' },
+        );
+      } else {
+        ctx.reply(
+          `Chat ID: \`tg:${chatId}\`\nName: ${chatName}\nType: ${chatType}`,
+          { parse_mode: 'Markdown' },
+        );
+      }
     });
 
     // Command to check bot status
@@ -147,7 +198,7 @@ export class TelegramChannel implements Channel {
       // Skip commands
       if (ctx.message.text.startsWith('/')) return;
 
-      const chatJid = `tg:${ctx.chat.id}`;
+      const chatJid = this.buildJid(ctx);
       let content = ctx.message.text;
       const timestamp = new Date(ctx.message.date * 1000).toISOString();
       const senderName =
@@ -224,7 +275,7 @@ export class TelegramChannel implements Channel {
 
     // Handle non-text messages with placeholders so the agent knows something was sent
     const storeNonText = (ctx: any, placeholder: string) => {
-      const chatJid = `tg:${ctx.chat.id}`;
+      const chatJid = this.buildJid(ctx);
       const group = this.opts.registeredGroups()[chatJid];
       if (!group) return;
 
@@ -261,7 +312,7 @@ export class TelegramChannel implements Channel {
         storeNonText(ctx, '[Photo]');
         return;
       }
-      const chatJid = `tg:${ctx.chat.id}`;
+      const chatJid = this.buildJid(ctx);
       const group = this.opts.registeredGroups()[chatJid];
       if (!group) return;
 
@@ -309,9 +360,10 @@ export class TelegramChannel implements Channel {
           throw new Error(`Download failed: ${response.status}`);
         const buffer = Buffer.from(await response.arrayBuffer());
         const text = await transcribeAudio(buffer);
+        const chatJid = this.buildJid(ctx);
         logger.info(
           {
-            chatJid: `tg:${ctx.chat.id}`,
+            chatJid,
             duration: ctx.message.voice.duration,
           },
           `Voice transcribed (${text.length} chars)`,
@@ -325,7 +377,6 @@ export class TelegramChannel implements Channel {
             logger.warn({ err: e }, 'Failed to send transcript reply'),
           );
         // Store as a regular message with the transcript
-        const chatJid = `tg:${ctx.chat.id}`;
         const group = this.opts.registeredGroups()[chatJid];
         if (!group) return;
         const timestamp = new Date(ctx.message.date * 1000).toISOString();
@@ -367,7 +418,7 @@ export class TelegramChannel implements Channel {
         storeNonText(ctx, '[Document]');
         return;
       }
-      const chatJid = `tg:${ctx.chat.id}`;
+      const chatJid = this.buildJid(ctx);
       const group = this.opts.registeredGroups()[chatJid];
       if (!group) return;
 
