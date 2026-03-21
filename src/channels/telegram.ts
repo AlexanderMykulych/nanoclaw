@@ -137,13 +137,14 @@ export class TelegramChannel implements Channel {
     const parentGroup = this.opts.registeredGroups()[parentJid];
     if (!parentGroup || !this.opts.registerGroup) return parentJid;
 
-    // Auto-register thread as independent group
+    // Auto-register thread group, inheriting container config (mounts) from parent
     try {
       this.opts.registerGroup(threadJid, {
         name: `Thread ${threadId}`,
         folder: `${parentGroup.folder}_t${threadId}`,
         trigger: '',
         requiresTrigger: false,
+        containerConfig: parentGroup.containerConfig,
         added_at: new Date().toISOString(),
         isMain: false,
       });
