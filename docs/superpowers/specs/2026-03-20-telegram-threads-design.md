@@ -16,15 +16,17 @@ Non-thread messages keep the existing format: `tg:{chatId}`.
 
 The `_` separator is safe because Telegram chat IDs are numeric (negative for groups) and thread IDs are positive integers — no ambiguity.
 
+**General topic (threadId=1):** Some Telegram clients send `message_thread_id=1` for the "General" topic, others omit it. Treat threadId=1 as the parent chat (map to `tg:{chatId}`, not `tg:{chatId}_1`) to avoid creating a confusing duplicate group.
+
 ## Auto-Registration
 
-When a message arrives with `ctx.message.message_thread_id`:
+When a message arrives with `ctx.message.message_thread_id` (and threadId != 1):
 
 1. Build thread JID: `tg:{chatId}_{threadId}`
 2. Check if thread JID is already registered → deliver message as normal
 3. If not registered, check if parent chat `tg:{chatId}` is registered
 4. If parent is registered, auto-create a new group:
-   - `name`: topic name from Telegram (or `Thread {threadId}` as fallback)
+   - `name`: `Thread {threadId}` (topic names are not available on message context without extra API calls — use simple fallback)
    - `folder`: `{parentFolder}_t{threadId}` (e.g., `telegram_main_t789`)
    - `trigger`: empty string
    - `requiresTrigger`: `false` (threads are typically direct conversations)
@@ -32,6 +34,10 @@ When a message arrives with `ctx.message.message_thread_id`:
    - `isMain`: `false`
    - `added_at`: current ISO timestamp
 5. Deliver message to the new group
+
+**Folder uniqueness:** `setRegisteredGroup` uses `INSERT OR REPLACE` on JID primary key. If a folder name collision occurs (UNIQUE constraint on folder), catch the error, log it, and skip auto-registration for that thread.
+
+**Race condition:** Two simultaneous messages in the same thread could both attempt registration. Since `setRegisteredGroup` is idempotent (INSERT OR REPLACE) and `fs.mkdirSync` with `recursive: true` is idempotent, this is safe.
 
 If the parent chat is NOT registered, ignore the message (same as current behavior for unregistered chats).
 
@@ -55,17 +61,23 @@ function parseThreadJid(jid: string): { chatId: string; threadId?: number } {
 }
 ```
 
-All send/edit methods use this parser to add `message_thread_id` when present.
+All send/edit methods use this parser to add `message_thread_id` when present:
+
+- `sendMessage()`: pass `message_thread_id` to `sendTelegramMessage` options for both single and chunked paths
+- `sendMessageWithId()`: pass `message_thread_id` directly to `bot.api.sendMessage` in both Markdown and fallback paths
+- `editMessage()`: pass `message_thread_id` to `bot.api.editMessageText`
 
 ## `/chatid` Command
 
-When executed inside a thread, return the thread JID:
+When executed inside a thread (and threadId != 1), return the thread JID:
 
 ```
 Chat ID: `tg:-1001234567_789`
-Name: Topic Name
+Name: Thread Name
 Type: thread
 ```
+
+Access `ctx.message?.message_thread_id` which is available on command contexts in grammY.
 
 ## `ownsJid` Update
 
@@ -80,24 +92,19 @@ Include `message_thread_id` when sending typing indicator in a thread.
 ### 1. `src/channels/telegram.ts`
 
 - Add `parseThreadJid()` helper function
-- `message:text` handler: build thread JID when `message_thread_id` is present; check thread registration, then parent registration; auto-register if needed
-- Non-text message handlers (`storeNonText`): same thread JID logic
-- `/chatid` command: show thread JID when in a thread
-- `sendMessage()`: use `parseThreadJid` to add `message_thread_id`
-- `sendMessageWithId()`: same
-- `editMessage()`: same
-- `setTyping()`: same
+- **`message:text` handler**: build thread JID when `message_thread_id` is present (skip threadId=1); check thread registration, then parent registration; auto-register if needed
+- **Non-text handlers (`storeNonText`)**: same thread JID logic — the `storeNonText` closure builds `chatJid`, update it to include thread ID
+- **Voice handler**: has its own inline message delivery path (lines 276-339) that bypasses `storeNonText` — must also build thread-aware JID at line 305
+- **`/chatid` command**: show thread JID when `ctx.message?.message_thread_id` is present and != 1
+- **`sendMessage()`**: use `parseThreadJid`, pass `message_thread_id` in options for both single-message and chunked (loop) paths
+- **`sendMessageWithId()`**: use `parseThreadJid`, pass `message_thread_id` to `bot.api.sendMessage` in both Markdown and plain-text fallback paths
+- **`editMessage()`**: use `parseThreadJid`, pass `message_thread_id` to `bot.api.editMessageText`
+- **`setTyping()`**: use `parseThreadJid`, pass `message_thread_id` to `sendChatAction`
 - `sendTelegramMessage()`: already accepts `message_thread_id` in options — no change needed
 
-### 2. `src/index.ts`
+### 2. `src/channels/telegram.ts` — Registration Callback
 
-- `registerGroup()` is called from `setRegisteredGroup()` in db.ts — thread auto-registration uses this existing path
-- Thread groups are stored in `registeredGroups` like any other group
-- No structural changes needed — the Telegram channel handles auto-registration internally by calling the existing `onMessage` callback after registering
-
-### 3. `src/channels/telegram.ts` — Auto-Registration Callback
-
-The `TelegramChannelOpts` interface needs a new callback for registering groups:
+Add `registerGroup` to `TelegramChannelOpts`:
 
 ```ts
 export interface TelegramChannelOpts {
@@ -108,7 +115,31 @@ export interface TelegramChannelOpts {
 }
 ```
 
-The orchestrator (`index.ts`) passes its `registerGroup` function when constructing the channel.
+### 3. `src/channels/registry.ts` — ChannelOpts
+
+Add `registerGroup` to the shared `ChannelOpts` interface so it's available to all channels:
+
+```ts
+export interface ChannelOpts {
+  onMessage: OnInboundMessage;
+  onChatMetadata: OnChatMetadata;
+  registeredGroups: () => Record<string, RegisteredGroup>;
+  registerGroup?: (jid: string, group: RegisteredGroup) => void;
+}
+```
+
+### 4. `src/index.ts` — Wire up registerGroup
+
+Pass the existing `registerGroup` function in `channelOpts`:
+
+```ts
+const channelOpts: ChannelOpts = {
+  onMessage: ...,
+  onChatMetadata: ...,
+  registeredGroups: () => registeredGroups,
+  registerGroup: registerGroup,  // existing function at line 94
+};
+```
 
 ## What This Does NOT Change
 
