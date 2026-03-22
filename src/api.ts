@@ -7,6 +7,7 @@ import {
   getTaskRunLogs,
   getErrors,
   getErrorCountSince,
+  getMetrics,
 } from './db.js';
 import type { GroupQueue } from './group-queue.js';
 import { readEnvFile } from './env.js';
@@ -111,6 +112,9 @@ export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
         } else if (path === '/api/containers') {
           const queueStatus = deps.queue.getStatus();
           sendJson(res, 200, queueStatus);
+        } else if (path === '/api/metrics') {
+          const hours = parseInt(params.get('hours') || '24', 10);
+          sendJson(res, 200, getMetrics(Math.min(hours, 72)));
         } else if (path === '/api/errors') {
           const limit = parseInt(params.get('limit') || '50', 10);
           const offset = parseInt(params.get('offset') || '0', 10);

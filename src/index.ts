@@ -59,6 +59,7 @@ import {
 } from './sender-allowlist.js';
 import { syncObsidianTasks } from './obsidian-task-sync.js';
 import { startSchedulerLoop } from './task-scheduler.js';
+import { startMetricsCollector } from './metrics-collector.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 
@@ -551,6 +552,8 @@ async function main(): Promise<void> {
     queue,
     version: pkg.version,
   });
+
+  startMetricsCollector(queue);
 
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {

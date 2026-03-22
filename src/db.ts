@@ -93,6 +93,25 @@ function createSchema(database: Database.Database): void {
       stack TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_error_log_timestamp ON error_log(timestamp);
+
+    CREATE TABLE IF NOT EXISTS metrics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+      cpu_percent REAL,
+      mem_total_mb INTEGER,
+      mem_used_mb INTEGER,
+      mem_percent REAL,
+      disk_total_gb REAL,
+      disk_used_gb REAL,
+      disk_percent REAL,
+      load_avg_1 REAL,
+      load_avg_5 REAL,
+      load_avg_15 REAL,
+      containers_active INTEGER,
+      containers_queued INTEGER,
+      uptime_seconds REAL
+    );
+    CREATE INDEX IF NOT EXISTS idx_metrics_timestamp ON metrics(timestamp);
   `);
 
   // Add context_mode column if it doesn't exist (migration for existing DBs)
@@ -787,6 +806,50 @@ export function getTaskRunLogs(taskId: string): Array<{
     result: string | null;
     error: string | null;
   }>;
+}
+
+// --- metrics ---
+
+export interface MetricRow {
+  id: number;
+  timestamp: string;
+  cpu_percent: number;
+  mem_total_mb: number;
+  mem_used_mb: number;
+  mem_percent: number;
+  disk_total_gb: number;
+  disk_used_gb: number;
+  disk_percent: number;
+  load_avg_1: number;
+  load_avg_5: number;
+  load_avg_15: number;
+  containers_active: number;
+  containers_queued: number;
+  uptime_seconds: number;
+}
+
+export function insertMetric(metric: Omit<MetricRow, 'id' | 'timestamp'>): void {
+  db.prepare(`
+    INSERT INTO metrics (cpu_percent, mem_total_mb, mem_used_mb, mem_percent, disk_total_gb, disk_used_gb, disk_percent, load_avg_1, load_avg_5, load_avg_15, containers_active, containers_queued, uptime_seconds)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    metric.cpu_percent, metric.mem_total_mb, metric.mem_used_mb, metric.mem_percent,
+    metric.disk_total_gb, metric.disk_used_gb, metric.disk_percent,
+    metric.load_avg_1, metric.load_avg_5, metric.load_avg_15,
+    metric.containers_active, metric.containers_queued, metric.uptime_seconds,
+  );
+}
+
+export function getMetrics(hours: number): MetricRow[] {
+  return db.prepare(
+    `SELECT * FROM metrics WHERE timestamp > datetime('now', '-' || ? || ' hours') ORDER BY timestamp ASC`
+  ).all(hours) as MetricRow[];
+}
+
+export function cleanupMetrics(days: number): void {
+  db.prepare(
+    `DELETE FROM metrics WHERE timestamp < datetime('now', '-' || ? || ' days')`
+  ).run(days);
 }
 
 // --- JSON migration ---
