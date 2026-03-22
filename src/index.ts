@@ -544,7 +544,9 @@ async function main(): Promise<void> {
     PROXY_BIND_HOST,
   );
 
-  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
+  const pkg = JSON.parse(
+    readFileSync(new URL('../package.json', import.meta.url), 'utf-8'),
+  );
   const apiServer = await startApiServer(API_PORT, {
     queue,
     version: pkg.version,

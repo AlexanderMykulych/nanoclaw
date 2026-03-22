@@ -9,7 +9,9 @@ export function shouldLogToDb(level: number): boolean {
   return level >= 50;
 }
 
-export function extractErrorFields(logObj: Record<string, unknown>): LogErrorInput {
+export function extractErrorFields(
+  logObj: Record<string, unknown>,
+): LogErrorInput {
   const level = LEVEL_NAMES[logObj.level as number] ?? 'error';
   const err = logObj.err as { message?: string; stack?: string } | undefined;
 

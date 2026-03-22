@@ -713,9 +713,7 @@ export function getErrors(opts: {
   offset: number;
 }): ErrorLogEntry[] {
   return db
-    .prepare(
-      'SELECT * FROM error_log ORDER BY timestamp DESC LIMIT ? OFFSET ?',
-    )
+    .prepare('SELECT * FROM error_log ORDER BY timestamp DESC LIMIT ? OFFSET ?')
     .all(opts.limit, opts.offset) as ErrorLogEntry[];
 }
 

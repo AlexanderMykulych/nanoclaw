@@ -3,7 +3,12 @@ import https from 'https';
 import path from 'path';
 import { Api, Bot } from 'grammy';
 
-import { ASSISTANT_NAME, GROUPS_DIR, MINI_APP_URL, TRIGGER_PATTERN } from '../config.js';
+import {
+  ASSISTANT_NAME,
+  GROUPS_DIR,
+  MINI_APP_URL,
+  TRIGGER_PATTERN,
+} from '../config.js';
 import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
 import { isTranscriptionAvailable, transcribeAudio } from '../transcription.js';

@@ -4,7 +4,9 @@ import pretty from 'pino-pretty';
 
 let dbWriter: ((logObj: Record<string, unknown>) => void) | null = null;
 
-export function setErrorDbWriter(fn: (logObj: Record<string, unknown>) => void): void {
+export function setErrorDbWriter(
+  fn: (logObj: Record<string, unknown>) => void,
+): void {
   dbWriter = fn;
 }
 

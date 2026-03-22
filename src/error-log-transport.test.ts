@@ -3,8 +3,8 @@ import { shouldLogToDb, extractErrorFields } from './error-log-transport.js';
 
 describe('error-log-transport', () => {
   it('filters by log level — only error and fatal', () => {
-    expect(shouldLogToDb(50)).toBe(true);  // error
-    expect(shouldLogToDb(60)).toBe(true);  // fatal
+    expect(shouldLogToDb(50)).toBe(true); // error
+    expect(shouldLogToDb(60)).toBe(true); // fatal
     expect(shouldLogToDb(30)).toBe(false); // info
     expect(shouldLogToDb(40)).toBe(false); // warn
   });

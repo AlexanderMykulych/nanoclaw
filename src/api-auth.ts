@@ -1,6 +1,9 @@
 import crypto from 'crypto';
 
-export function validateTelegramInitData(initData: string, botToken: string): boolean {
+export function validateTelegramInitData(
+  initData: string,
+  botToken: string,
+): boolean {
   if (!initData) return false;
 
   const params = new URLSearchParams(initData);
@@ -13,8 +16,17 @@ export function validateTelegramInitData(initData: string, botToken: string): bo
     .map(([k, v]) => `${k}=${v}`)
     .join('\n');
 
-  const secret = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
-  const computedHash = crypto.createHmac('sha256', secret).update(checkString).digest('hex');
+  const secret = crypto
+    .createHmac('sha256', 'WebAppData')
+    .update(botToken)
+    .digest();
+  const computedHash = crypto
+    .createHmac('sha256', secret)
+    .update(checkString)
+    .digest('hex');
 
-  return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(computedHash, 'hex'));
+  return crypto.timingSafeEqual(
+    Buffer.from(hash, 'hex'),
+    Buffer.from(computedHash, 'hex'),
+  );
 }
