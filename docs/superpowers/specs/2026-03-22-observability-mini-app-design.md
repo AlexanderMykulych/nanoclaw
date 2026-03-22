@@ -159,6 +159,69 @@ Caddy auto-provisions Let's Encrypt certificate. Port 3847 closed externally via
 
 Mini App build output deployed to `/var/www/mini-app/` on server. Can be integrated into existing deploy flow (git pull → build → copy).
 
+## Domain Setup Guide
+
+Steps to get a domain pointing to the Hetzner VPS (159.69.207.195):
+
+### 1. Buy a domain
+
+Cheap registrars: Namecheap, Porkbun, Cloudflare Registrar. Look for `.xyz`, `.site`, or `.dev` — typically $2-10/year.
+
+Example: `mynanoclaw.xyz`
+
+### 2. Configure DNS
+
+In the registrar's DNS panel, add an **A record**:
+
+| Type | Name | Value | TTL |
+|------|------|-------|-----|
+| A | `@` (or subdomain like `app`) | `159.69.207.195` | 300 |
+
+If using a subdomain (e.g. `app.mynanoclaw.xyz`), set Name to `app` instead of `@`.
+
+DNS propagation takes 5-60 minutes. Verify with: `dig +short app.mynanoclaw.xyz`
+
+### 3. Install Caddy on server
+
+```bash
+ssh root@159.69.207.195
+
+# Debian/Ubuntu (ARM)
+apt install -y debian-keyring debian-archive-keyring apt-transport-https
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+apt update && apt install caddy
+```
+
+### 4. Configure Caddy
+
+Write `/etc/caddy/Caddyfile` with the domain (replace `app.mynanoclaw.xyz` with your actual domain):
+
+```
+app.mynanoclaw.xyz {
+    root * /var/www/mini-app
+    try_files {path} /index.html
+    file_server
+
+    handle /api/* {
+        reverse_proxy localhost:3847
+    }
+}
+```
+
+Then: `systemctl reload caddy`
+
+Caddy will automatically obtain a Let's Encrypt HTTPS certificate. Make sure ports 80 and 443 are open in the firewall:
+
+```bash
+ufw allow 80
+ufw allow 443
+```
+
+### 5. Verify
+
+Open `https://app.mynanoclaw.xyz` in a browser — should see the Caddy default page (until Mini App is deployed) with a valid HTTPS certificate.
+
 ## Future (out of scope)
 
 - **Proactive error alerts** — bot sends message to main chat when error occurs. Builds on `error_log` table (flag `notified`).
