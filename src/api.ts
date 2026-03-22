@@ -10,7 +10,7 @@ import {
 } from './db.js';
 import type { GroupQueue } from './group-queue.js';
 import { readEnvFile } from './env.js';
-import { listVaultItems, getVaultItem } from './vault.js';
+import { listVaultItems, getVaultItem, listVaultTasks, toggleVaultTask } from './vault.js';
 
 interface ApiDeps {
   queue: GroupQueue;
@@ -42,7 +42,7 @@ export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
       if (req.method === 'OPTIONS') {
         res.writeHead(204, {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Telegram-Web-App-Init-Data',
         });
         res.end();
@@ -106,6 +106,27 @@ export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
           const limit = parseInt(params.get('limit') || '50', 10);
           const offset = parseInt(params.get('offset') || '0', 10);
           sendJson(res, 200, getErrors({ limit, offset }));
+        } else if (path === '/api/vault/tasks') {
+          sendJson(res, 200, listVaultTasks());
+        } else if (path.match(/^\/api\/vault\/tasks\/[^/]+\/toggle$/) && req.method === 'POST') {
+          const taskId = path.split('/')[4];
+          // Read POST body
+          const chunks: Buffer[] = [];
+          req.on('data', (c: Buffer) => chunks.push(c));
+          req.on('end', () => {
+            try {
+              const body = JSON.parse(Buffer.concat(chunks).toString()) as { done: boolean };
+              const success = toggleVaultTask(taskId, body.done);
+              if (success) {
+                sendJson(res, 200, { ok: true });
+              } else {
+                sendJson(res, 404, { error: 'Task not found' });
+              }
+            } catch {
+              sendJson(res, 400, { error: 'Invalid request body' });
+            }
+          });
+          return; // Don't fall through — we're handling async
         } else if (path.match(/^\/api\/vault\/[^/]+$/) && !path.endsWith('/')) {
           const type = path.split('/')[3];
           const items = listVaultItems(type);
