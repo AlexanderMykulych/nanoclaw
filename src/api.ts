@@ -32,7 +32,8 @@ function parseUrl(url: string): { path: string; params: URLSearchParams } {
 
 export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
   const envVars = readEnvFile(['TELEGRAM_BOT_TOKEN']);
-  const botToken = process.env.TELEGRAM_BOT_TOKEN || envVars.TELEGRAM_BOT_TOKEN || '';
+  const botToken =
+    process.env.TELEGRAM_BOT_TOKEN || envVars.TELEGRAM_BOT_TOKEN || '';
 
   return new Promise((resolve, reject) => {
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -47,14 +48,17 @@ export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
         return;
       }
 
-      // Auth check
-      const initData = req.headers['telegram-web-app-init-data'] as string || '';
+      const { path, params } = parseUrl(req.url || '/');
+
+      // Auth check — accept from query param or header
+      const initData =
+        params.get('_auth') ||
+        (req.headers['telegram-web-app-init-data'] as string) ||
+        '';
       if (botToken && !validateTelegramInitData(initData, botToken)) {
         sendJson(res, 401, { error: 'Unauthorized' });
         return;
       }
-
-      const { path, params } = parseUrl(req.url || '/');
 
       try {
         if (path === '/api/health') {

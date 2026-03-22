@@ -1,12 +1,12 @@
 const tg = window.Telegram?.WebApp;
 
 async function fetchApi<T>(path: string): Promise<T> {
-  const headers: Record<string, string> = {};
+  const url = new URL(path, window.location.origin);
   if (tg?.initData) {
-    headers['Telegram-Web-App-Init-Data'] = tg.initData;
+    url.searchParams.set('_auth', tg.initData);
   }
 
-  const res = await fetch(path, { headers });
+  const res = await fetch(url.toString());
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json() as Promise<T>;
 }
