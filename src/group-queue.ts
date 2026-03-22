@@ -27,6 +27,18 @@ interface GroupState {
   retryCount: number;
 }
 
+export interface QueueStatus {
+  activeCount: number;
+  queuedCount: number;
+  containers: Array<{
+    jid: string;
+    containerName: string | null;
+    groupFolder: string | null;
+    isTaskContainer: boolean;
+    runningTaskId: string | null;
+  }>;
+}
+
 export class GroupQueue {
   private groups = new Map<string, GroupState>();
   private activeCount = 0;
@@ -342,6 +354,26 @@ export class GroupQueue {
       }
       // If neither pending, skip this group
     }
+  }
+
+  getStatus(): QueueStatus {
+    const containers: QueueStatus['containers'] = [];
+    for (const [jid, state] of this.groups) {
+      if (state.active) {
+        containers.push({
+          jid,
+          containerName: state.containerName,
+          groupFolder: state.groupFolder,
+          isTaskContainer: state.isTaskContainer,
+          runningTaskId: state.runningTaskId,
+        });
+      }
+    }
+    return {
+      activeCount: this.activeCount,
+      queuedCount: this.waitingGroups.length,
+      containers,
+    };
   }
 
   async shutdown(_gracePeriodMs: number): Promise<void> {

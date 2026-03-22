@@ -433,6 +433,15 @@ describe('GroupQueue', () => {
     await vi.advanceTimersByTimeAsync(10);
   });
 
+  describe('getStatus', () => {
+    it('returns empty when no containers active', () => {
+      const status = queue.getStatus();
+      expect(status.activeCount).toBe(0);
+      expect(status.containers).toEqual([]);
+      expect(status.queuedCount).toBe(0);
+    });
+  });
+
   it('preempts when idle arrives with pending tasks', async () => {
     const fs = await import('fs');
     let resolveProcess: () => void;
