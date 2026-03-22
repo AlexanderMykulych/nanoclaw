@@ -36,3 +36,10 @@ groups/global/*
 .nanoclaw/
 
 agents-sdk-docs
+
+# Mini App build output
+mini-app/dist/
+mini-app/node_modules/
+
+# Superpowers brainstorm files
+.superpowers/
