@@ -76,3 +76,6 @@ export const TIMEZONE =
 export const API_PORT = parseInt(process.env.API_PORT || '3847', 10);
 
 export const MINI_APP_URL = process.env.MINI_APP_URL || '';
+
+export const OBSIDIAN_VAULT_PATH =
+  process.env.OBSIDIAN_VAULT_PATH || '/workspace/extra/Memory_Obsidian/Memory';
