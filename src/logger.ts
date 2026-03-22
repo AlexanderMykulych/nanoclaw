@@ -1,11 +1,37 @@
 import pino from 'pino';
+import { Writable } from 'stream';
+import pretty from 'pino-pretty';
 
-export const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  transport: { target: 'pino-pretty', options: { colorize: true } },
+let dbWriter: ((logObj: Record<string, unknown>) => void) | null = null;
+
+export function setErrorDbWriter(fn: (logObj: Record<string, unknown>) => void): void {
+  dbWriter = fn;
+}
+
+const dbStream = new Writable({
+  write(chunk, _encoding, callback) {
+    if (dbWriter) {
+      try {
+        const obj = JSON.parse(chunk.toString());
+        if (obj.level >= 50) dbWriter(obj);
+      } catch {
+        // ignore parse errors
+      }
+    }
+    callback();
+  },
 });
 
-// Route uncaught errors through pino so they get timestamps in stderr
+const prettyStream = pretty({ colorize: true });
+
+export const logger = pino(
+  { level: process.env.LOG_LEVEL || 'info' },
+  pino.multistream([
+    { stream: prettyStream },
+    { level: 'error', stream: dbStream },
+  ]),
+);
+
 process.on('uncaughtException', (err) => {
   logger.fatal({ err }, 'Uncaught exception');
   process.exit(1);
