@@ -68,4 +68,16 @@ describe('API endpoints', () => {
     const res = await fetchApi('/api/unknown');
     expect(res.status).toBe(404);
   });
+
+  it('GET /api/vault/researches returns array', async () => {
+    const res = await fetchApi('/api/vault/researches');
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as unknown[];
+    expect(Array.isArray(data)).toBe(true);
+  });
+
+  it('GET /api/vault/unknown returns 404', async () => {
+    const res = await fetchApi('/api/vault/unknown');
+    expect(res.status).toBe(404);
+  });
 });

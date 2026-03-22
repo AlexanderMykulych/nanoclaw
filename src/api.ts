@@ -10,6 +10,7 @@ import {
 } from './db.js';
 import type { GroupQueue } from './group-queue.js';
 import { readEnvFile } from './env.js';
+import { listVaultItems, getVaultItem } from './vault.js';
 
 interface ApiDeps {
   queue: GroupQueue;
@@ -105,6 +106,24 @@ export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
           const limit = parseInt(params.get('limit') || '50', 10);
           const offset = parseInt(params.get('offset') || '0', 10);
           sendJson(res, 200, getErrors({ limit, offset }));
+        } else if (path.match(/^\/api\/vault\/[^/]+$/) && !path.endsWith('/')) {
+          const type = path.split('/')[3];
+          const items = listVaultItems(type);
+          if (items === null) {
+            sendJson(res, 404, { error: `Unknown vault type: ${type}` });
+          } else {
+            sendJson(res, 200, items);
+          }
+        } else if (path.match(/^\/api\/vault\/[^/]+\/[^/]+$/)) {
+          const parts = path.split('/');
+          const type = parts[3];
+          const filename = decodeURIComponent(parts[4]);
+          const item = getVaultItem(type, filename);
+          if (item === null) {
+            sendJson(res, 404, { error: 'Not found' });
+          } else {
+            sendJson(res, 200, item);
+          }
         } else {
           sendJson(res, 404, { error: 'Not found' });
         }
