@@ -108,6 +108,9 @@ export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
         } else if (path.match(/^\/api\/tasks\/[^/]+\/logs$/)) {
           const taskId = path.split('/')[3];
           sendJson(res, 200, getTaskRunLogs(taskId));
+        } else if (path === '/api/containers') {
+          const queueStatus = deps.queue.getStatus();
+          sendJson(res, 200, queueStatus);
         } else if (path === '/api/errors') {
           const limit = parseInt(params.get('limit') || '50', 10);
           const offset = parseInt(params.get('offset') || '0', 10);
@@ -152,7 +155,11 @@ export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
               const body = JSON.parse(Buffer.concat(chunks).toString()) as {
                 status: string;
               };
-              const success = updateVaultItemStatus(type, filename, body.status);
+              const success = updateVaultItemStatus(
+                type,
+                filename,
+                body.status,
+              );
               if (success) {
                 sendJson(res, 200, { ok: true });
               } else {
