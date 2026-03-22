@@ -35,7 +35,7 @@ describe('API endpoints', () => {
   it('GET /api/health returns health data', async () => {
     const res = await fetchApi('/api/health');
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data = (await res.json()) as Record<string, unknown>;
     expect(data.status).toMatch(/ok|warning|error/);
     expect(data.version).toBe('1.0.0-test');
     expect(typeof data.uptime).toBe('number');
@@ -44,7 +44,7 @@ describe('API endpoints', () => {
   it('GET /api/errors returns error list', async () => {
     const res = await fetchApi('/api/errors');
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data = (await res.json()) as Array<Record<string, unknown>>;
     expect(Array.isArray(data)).toBe(true);
     expect(data.length).toBeGreaterThanOrEqual(1);
     expect(data[0].message).toBe('Test error');
@@ -53,14 +53,14 @@ describe('API endpoints', () => {
   it('GET /api/tasks returns tasks array', async () => {
     const res = await fetchApi('/api/tasks');
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data = (await res.json()) as unknown[];
     expect(Array.isArray(data)).toBe(true);
   });
 
   it('GET /api/groups returns groups array', async () => {
     const res = await fetchApi('/api/groups');
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data = (await res.json()) as unknown[];
     expect(Array.isArray(data)).toBe(true);
   });
 
