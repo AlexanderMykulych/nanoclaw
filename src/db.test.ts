@@ -2,13 +2,18 @@ import { describe, it, expect, beforeEach } from 'vitest';
 
 import {
   _initTestDatabase,
+  _backdateErrors as backdateErrors,
+  cleanupErrors,
   createTask,
   deleteTask,
   getAllChats,
   getAllRegisteredGroups,
+  getErrorCountSince,
+  getErrors,
   getMessagesSince,
   getNewMessages,
   getTaskById,
+  logError,
   setRegisteredGroup,
   storeChatMetadata,
   storeMessage,
@@ -480,5 +485,56 @@ describe('registered group isMain', () => {
     const group = groups['group@g.us'];
     expect(group).toBeDefined();
     expect(group.isMain).toBeUndefined();
+  });
+});
+
+// --- error_log ---
+
+describe('error_log', () => {
+  beforeEach(() => {
+    _initTestDatabase();
+  });
+
+  it('stores and retrieves errors', () => {
+    logError({
+      level: 'error',
+      source: 'container',
+      groupFolder: 'test-group',
+      message: 'Container spawn failed',
+      stack: 'Error: spawn ENOENT\n  at ...',
+    });
+    logError({
+      level: 'error',
+      source: 'ipc',
+      message: 'Parse error',
+    });
+
+    const errors = getErrors({ limit: 50, offset: 0 });
+    expect(errors).toHaveLength(2);
+    expect(errors[0].source).toBe('ipc'); // newest first
+    expect(errors[1].source).toBe('container');
+    expect(errors[1].group_folder).toBe('test-group');
+    expect(errors[1].stack).toContain('ENOENT');
+  });
+
+  it('respects limit and offset', () => {
+    for (let i = 0; i < 10; i++) {
+      logError({ level: 'error', message: `Error ${i}` });
+    }
+    const page = getErrors({ limit: 3, offset: 2 });
+    expect(page).toHaveLength(3);
+  });
+
+  it('counts errors in time window', () => {
+    logError({ level: 'error', message: 'recent' });
+    const count = getErrorCountSince(60); // last 60 minutes
+    expect(count).toBeGreaterThanOrEqual(1);
+  });
+
+  it('cleans up old errors', () => {
+    logError({ level: 'error', message: 'old error' });
+    backdateErrors(6);
+    cleanupErrors(5);
+    expect(getErrors({ limit: 50, offset: 0 })).toHaveLength(0);
   });
 });

@@ -82,6 +82,17 @@ function createSchema(database: Database.Database): void {
       container_config TEXT,
       requires_trigger INTEGER DEFAULT 1
     );
+
+    CREATE TABLE IF NOT EXISTS error_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+      level TEXT NOT NULL,
+      source TEXT,
+      group_folder TEXT,
+      message TEXT NOT NULL,
+      stack TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_error_log_timestamp ON error_log(timestamp);
   `);
 
   // Add context_mode column if it doesn't exist (migration for existing DBs)
@@ -662,6 +673,122 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
     };
   }
   return result;
+}
+
+// --- error_log ---
+
+export interface ErrorLogEntry {
+  id: number;
+  timestamp: string;
+  level: string;
+  source: string | null;
+  group_folder: string | null;
+  message: string;
+  stack: string | null;
+}
+
+export interface LogErrorInput {
+  level: string;
+  source?: string;
+  groupFolder?: string;
+  message: string;
+  stack?: string;
+}
+
+export function logError(input: LogErrorInput): void {
+  db.prepare(
+    `INSERT INTO error_log (level, source, group_folder, message, stack)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(
+    input.level,
+    input.source ?? null,
+    input.groupFolder ?? null,
+    input.message,
+    input.stack ?? null,
+  );
+}
+
+export function getErrors(opts: {
+  limit: number;
+  offset: number;
+}): ErrorLogEntry[] {
+  return db
+    .prepare(
+      'SELECT * FROM error_log ORDER BY timestamp DESC LIMIT ? OFFSET ?',
+    )
+    .all(opts.limit, opts.offset) as ErrorLogEntry[];
+}
+
+export function getErrorCountSince(minutes: number): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) as count FROM error_log
+       WHERE timestamp > datetime('now', '-' || ? || ' minutes')`,
+    )
+    .get(minutes) as { count: number };
+  return row.count;
+}
+
+export function cleanupErrors(days: number): void {
+  db.prepare(
+    `DELETE FROM error_log WHERE timestamp < datetime('now', '-' || ? || ' days')`,
+  ).run(days);
+}
+
+/** @internal - for tests only. Backdates all error_log entries by N days. */
+export function _backdateErrors(days: number): void {
+  db.prepare(
+    `UPDATE error_log SET timestamp = datetime('now', '-' || ? || ' days')`,
+  ).run(days);
+}
+
+// --- API query helpers ---
+
+export function getRegisteredGroupsList(): Array<{
+  jid: string;
+  name: string;
+  folder: string;
+  last_message_time: string | null;
+}> {
+  return db
+    .prepare(
+      `SELECT g.jid, g.name, g.folder, c.last_message_time
+       FROM registered_groups g
+       LEFT JOIN chats c ON g.jid = c.jid
+       ORDER BY c.last_message_time DESC`,
+    )
+    .all() as Array<{
+    jid: string;
+    name: string;
+    folder: string;
+    last_message_time: string | null;
+  }>;
+}
+
+export function getScheduledTasks(): ScheduledTask[] {
+  return db
+    .prepare('SELECT * FROM scheduled_tasks ORDER BY next_run ASC')
+    .all() as ScheduledTask[];
+}
+
+export function getTaskRunLogs(taskId: string): Array<{
+  run_at: string;
+  duration_ms: number;
+  status: string;
+  result: string | null;
+  error: string | null;
+}> {
+  return db
+    .prepare(
+      'SELECT run_at, duration_ms, status, result, error FROM task_run_logs WHERE task_id = ? ORDER BY run_at DESC LIMIT 50',
+    )
+    .all(taskId) as Array<{
+    run_at: string;
+    duration_ms: number;
+    status: string;
+    result: string | null;
+    error: string | null;
+  }>;
 }
 
 // --- JSON migration ---
