@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs, { readFileSync } from 'fs';
 import path from 'path';
 
 import {
@@ -8,8 +8,12 @@ import {
   POLL_INTERVAL,
   TIMEZONE,
   TRIGGER_PATTERN,
+  API_PORT,
 } from './config.js';
 import { startCredentialProxy } from './credential-proxy.js';
+import { startApiServer } from './api.js';
+import { setErrorDbWriter } from './logger.js';
+import { writeErrorToDb } from './error-log-transport.js';
 import './channels/index.js';
 import {
   getChannelFactory,
@@ -27,6 +31,7 @@ import {
   PROXY_BIND_HOST,
 } from './container-runtime.js';
 import {
+  cleanupErrors,
   getAllChats,
   getAllRegisteredGroups,
   getAllSessions,
@@ -529,6 +534,8 @@ async function main(): Promise<void> {
   ensureContainerSystemRunning();
   initDatabase();
   logger.info('Database initialized');
+  setErrorDbWriter(writeErrorToDb);
+  cleanupErrors(5);
   loadState();
 
   // Start credential proxy (containers route API calls through this)
@@ -537,10 +544,17 @@ async function main(): Promise<void> {
     PROXY_BIND_HOST,
   );
 
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
+  const apiServer = await startApiServer(API_PORT, {
+    queue,
+    version: pkg.version,
+  });
+
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');
     proxyServer.close();
+    apiServer.close();
     await queue.shutdown(10000);
     for (const ch of channels) await ch.disconnect();
     process.exit(0);

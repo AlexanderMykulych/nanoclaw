@@ -72,3 +72,5 @@ export const TRIGGER_PATTERN = new RegExp(
 // Uses system timezone by default
 export const TIMEZONE =
   process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+export const API_PORT = parseInt(process.env.API_PORT || '3847', 10);
