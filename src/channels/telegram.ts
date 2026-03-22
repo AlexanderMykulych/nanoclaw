@@ -3,7 +3,7 @@ import https from 'https';
 import path from 'path';
 import { Api, Bot } from 'grammy';
 
-import { ASSISTANT_NAME, GROUPS_DIR, TRIGGER_PATTERN } from '../config.js';
+import { ASSISTANT_NAME, GROUPS_DIR, MINI_APP_URL, TRIGGER_PATTERN } from '../config.js';
 import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
 import { isTranscriptionAvailable, transcribeAudio } from '../transcription.js';
@@ -194,6 +194,18 @@ export class TelegramChannel implements Channel {
     this.bot.command('ping', (ctx) => {
       ctx.reply(`${ASSISTANT_NAME} is online.`);
     });
+
+    if (MINI_APP_URL) {
+      this.bot.command('check', (ctx) => {
+        ctx.reply('Open NanoClaw Dashboard:', {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '📊 Dashboard', web_app: { url: MINI_APP_URL } }],
+            ],
+          },
+        });
+      });
+    }
 
     this.bot.on('message:text', async (ctx) => {
       // Skip commands
@@ -492,6 +504,17 @@ export class TelegramChannel implements Channel {
           console.log(
             `  Send /chatid to the bot to get a chat's registration ID\n`,
           );
+          if (MINI_APP_URL) {
+            this.bot!.api.setChatMenuButton({
+              menu_button: {
+                type: 'web_app',
+                text: 'Dashboard',
+                web_app: { url: MINI_APP_URL },
+              },
+            }).catch((err) => {
+              logger.warn({ err }, 'Failed to set menu button');
+            });
+          }
           resolve();
         },
       });
