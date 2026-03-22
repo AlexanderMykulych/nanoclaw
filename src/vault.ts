@@ -95,6 +95,38 @@ export function getVaultItem(
   return parseFrontmatter(raw);
 }
 
+export function updateVaultItemStatus(
+  type: string,
+  filename: string,
+  newStatus: string,
+  vaultPath: string = OBSIDIAN_VAULT_PATH,
+): boolean {
+  const typeConfig = VAULT_TYPES[type];
+  if (!typeConfig) return false;
+
+  if (filename.includes('..') || !filename.endsWith('.md')) return false;
+
+  const filePath = path.join(vaultPath, typeConfig.path, filename);
+  const resolvedDir = path.resolve(path.join(vaultPath, typeConfig.path));
+  const resolvedFile = path.resolve(filePath);
+  if (!resolvedFile.startsWith(resolvedDir)) return false;
+
+  if (!fs.existsSync(filePath)) return false;
+
+  const raw = fs.readFileSync(filePath, 'utf-8');
+  const match = raw.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) return false;
+
+  const updated = raw.replace(
+    /^(---\n[\s\S]*?)(status:\s*).+/m,
+    `$1$2${newStatus}`,
+  );
+
+  if (updated === raw) return false;
+  fs.writeFileSync(filePath, updated, 'utf-8');
+  return true;
+}
+
 export interface VaultTask {
   id: string;
   text: string;
@@ -104,7 +136,9 @@ export interface VaultTask {
   line: number;
 }
 
-export function listVaultTasks(vaultPath: string = OBSIDIAN_VAULT_PATH): VaultTask[] {
+export function listVaultTasks(
+  vaultPath: string = OBSIDIAN_VAULT_PATH,
+): VaultTask[] {
   const filePath = path.join(vaultPath, 'tasks.md');
   if (!fs.existsSync(filePath)) return [];
 
@@ -133,11 +167,11 @@ export function listVaultTasks(vaultPath: string = OBSIDIAN_VAULT_PATH): VaultTa
 
     // Clean text: remove category, date, source links, block ref
     let text = content
-      .replace(/_\([^)]+\)_/, '')        // remove category
-      .replace(/📅\s*[\d-]+(?:\s+\d+:\d+)?/, '')  // remove date
-      .replace(/—\s*\[\[[^\]]*\]\](?:,\s*🗓️[^)]*)?/, '')  // remove source
-      .replace(/—\s*🗓️[^\^]*/, '')       // remove calendar ref
-      .replace(/\^[\w-]+\s*$/, '')        // remove block ref
+      .replace(/_\([^)]+\)_/, '') // remove category
+      .replace(/📅\s*[\d-]+(?:\s+\d+:\d+)?/, '') // remove date
+      .replace(/—\s*\[\[[^\]]*\]\](?:,\s*🗓️[^)]*)?/, '') // remove source
+      .replace(/—\s*🗓️[^\^]*/, '') // remove calendar ref
+      .replace(/\^[\w-]+\s*$/, '') // remove block ref
       .replace(/\s+/g, ' ')
       .trim();
 
