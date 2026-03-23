@@ -51,8 +51,8 @@ describe('validateTelegramInitData', () => {
     );
   });
 
-  it('rejects expired initData (older than 5 minutes)', () => {
-    const expiredDate = (Math.floor(Date.now() / 1000) - 600).toString();
+  it('rejects expired initData (older than 24 hours)', () => {
+    const expiredDate = (Math.floor(Date.now() / 1000) - 90000).toString();
     const initData = buildInitData(
       { auth_date: expiredDate, user: '{"id":123}', query_id: 'test' },
       BOT_TOKEN,

@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 
-const MAX_AUTH_AGE_SECONDS = 300; // 5 minutes
+const MAX_AUTH_AGE_SECONDS = 86400; // 24 hours — Telegram mini app stays open long
 
 export function validateTelegramInitData(
   initData: string,
@@ -13,7 +13,10 @@ export function validateTelegramInitData(
   if (!hash) return false;
 
   const authDate = parseInt(params.get('auth_date') || '0', 10);
-  if (!authDate || Math.floor(Date.now() / 1000) - authDate > MAX_AUTH_AGE_SECONDS) {
+  if (
+    !authDate ||
+    Math.floor(Date.now() / 1000) - authDate > MAX_AUTH_AGE_SECONDS
+  ) {
     return false;
   }
 
