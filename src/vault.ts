@@ -15,6 +15,11 @@ export const VAULT_TYPES: Record<string, VaultTypeConfig> = {
     titleField: 'section',
     badgeField: 'status',
   },
+  notes: {
+    path: 'notes',
+    titleField: '',
+    badgeField: 'sphere',
+  },
 };
 
 export interface VaultListItem {
@@ -181,7 +186,7 @@ export function listVaultTasks(
   return tasks;
 }
 
-const VALID_SPHERES = ['робота', 'дім', 'сім\'я', 'інше'] as const;
+const VALID_SPHERES = ['робота', 'дім', "сім'я", 'інше'] as const;
 export type NoteSphere = (typeof VALID_SPHERES)[number];
 
 export function createVaultNote(
