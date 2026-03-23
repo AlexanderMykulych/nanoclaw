@@ -30,14 +30,38 @@ function detectProxyBindHost(): string {
   // Check /proc filesystem, not env vars — WSL_DISTRO_NAME isn't set under systemd.
   if (fs.existsSync('/proc/sys/fs/binfmt_misc/WSLInterop')) return '127.0.0.1';
 
-  // Bare-metal Linux: bind to the docker0 bridge IP instead of 0.0.0.0
+  // Bare-metal Linux: bind to the docker0 bridge IP instead of 0.0.0.0.
+  // os.networkInterfaces() may omit DOWN interfaces (e.g. docker0 with no
+  // running containers at startup), so fall back to `ip addr` which always works.
   const ifaces = os.networkInterfaces();
   const docker0 = ifaces['docker0'];
   if (docker0) {
     const ipv4 = docker0.find((a) => a.family === 'IPv4');
     if (ipv4) return ipv4.address;
   }
-  return '0.0.0.0';
+
+  // docker0 exists but is DOWN — read its IP via `ip addr` instead
+  if (fs.existsSync('/sys/class/net/docker0')) {
+    try {
+      const out = execSync('ip -4 addr show docker0', {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 3000,
+      });
+      const match = out.match(/inet\s+([\d.]+)/);
+      if (match) return match[1];
+    } catch {
+      /* ip command failed — fall through */
+    }
+  }
+
+  // Last resort: refuse to bind to 0.0.0.0 which would expose credentials
+  // to the public internet. Bind to localhost instead — containers won't be
+  // able to reach the proxy, but that's safer than leaking API keys.
+  logger.warn(
+    'docker0 bridge not found — credential proxy binding to 127.0.0.1 (containers may not reach it)',
+  );
+  return '127.0.0.1';
 }
 
 /** CLI args needed for the container to resolve the host gateway. */
