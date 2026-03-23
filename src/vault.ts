@@ -181,6 +181,54 @@ export function listVaultTasks(
   return tasks;
 }
 
+const VALID_SPHERES = ['робота', 'дім', 'сім\'я', 'інше'] as const;
+export type NoteSphere = (typeof VALID_SPHERES)[number];
+
+export function createVaultNote(
+  text: string,
+  sphere: NoteSphere = 'інше',
+  vaultPath: string = OBSIDIAN_VAULT_PATH,
+): { ok: true; filename: string } | { ok: false; error: string } {
+  if (!text.trim()) return { ok: false, error: 'Text is required' };
+  if (!VALID_SPHERES.includes(sphere)) {
+    return { ok: false, error: `Invalid sphere: ${sphere}` };
+  }
+
+  const notesDir = path.join(vaultPath, 'notes');
+  if (!fs.existsSync(notesDir)) {
+    fs.mkdirSync(notesDir, { recursive: true });
+  }
+
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10);
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const time = `${hours}:${minutes}`;
+  const filename = `${date} ${hours}-${minutes}.md`;
+
+  // If file already exists (same minute), append seconds
+  let finalFilename = filename;
+  if (fs.existsSync(path.join(notesDir, finalFilename))) {
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    finalFilename = `${date} ${hours}-${minutes}-${seconds}.md`;
+  }
+
+  const content = `---
+date: ${date}
+time: "${time}"
+sphere: ${sphere}
+tags:
+  - note
+needs_ai_format: true
+---
+
+${text.trim()}
+`;
+
+  fs.writeFileSync(path.join(notesDir, finalFilename), content, 'utf-8');
+  return { ok: true, filename: finalFilename };
+}
+
 export function toggleVaultTask(
   taskId: string,
   done: boolean,

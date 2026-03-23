@@ -17,7 +17,9 @@ import {
   listVaultTasks,
   toggleVaultTask,
   updateVaultItemStatus,
+  createVaultNote,
 } from './vault.js';
+import type { NoteSphere } from './vault.js';
 
 interface ApiDeps {
   queue: GroupQueue;
@@ -28,7 +30,7 @@ function sendJson(res: ServerResponse, status: number, data: unknown): void {
   res.writeHead(status, {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Telegram-Web-App-Init-Data',
+    'Access-Control-Allow-Headers': 'Telegram-Web-App-Init-Data, Content-Type',
   });
   res.end(JSON.stringify(data));
 }
@@ -50,7 +52,7 @@ export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
         res.writeHead(204, {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Telegram-Web-App-Init-Data',
+          'Access-Control-Allow-Headers': 'Telegram-Web-App-Init-Data, Content-Type',
         });
         res.end();
         return;
@@ -119,6 +121,26 @@ export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
           const limit = parseInt(params.get('limit') || '50', 10);
           const offset = parseInt(params.get('offset') || '0', 10);
           sendJson(res, 200, getErrors({ limit, offset }));
+        } else if (path === '/api/vault/notes' && req.method === 'POST') {
+          const chunks: Buffer[] = [];
+          req.on('data', (c: Buffer) => chunks.push(c));
+          req.on('end', () => {
+            try {
+              const body = JSON.parse(Buffer.concat(chunks).toString()) as {
+                text: string;
+                sphere?: NoteSphere;
+              };
+              const result = createVaultNote(body.text, body.sphere);
+              if (result.ok) {
+                sendJson(res, 201, result);
+              } else {
+                sendJson(res, 400, { error: result.error });
+              }
+            } catch {
+              sendJson(res, 400, { error: 'Invalid request body' });
+            }
+          });
+          return;
         } else if (path === '/api/vault/tasks') {
           sendJson(res, 200, listVaultTasks());
         } else if (

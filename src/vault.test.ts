@@ -2,7 +2,13 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { listVaultItems, getVaultItem, listVaultTasks, toggleVaultTask } from './vault.js';
+import {
+  listVaultItems,
+  getVaultItem,
+  listVaultTasks,
+  toggleVaultTask,
+  createVaultNote,
+} from './vault.js';
 
 let testVaultDir: string;
 
@@ -148,5 +154,54 @@ updated: 2026-03-14
 
   it('returns false for nonexistent task', () => {
     expect(toggleVaultTask('nonexistent', true, taskVaultDir)).toBe(false);
+  });
+});
+
+describe('createVaultNote', () => {
+  let noteVaultDir: string;
+
+  beforeAll(() => {
+    noteVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vault-note-test-'));
+  });
+
+  afterAll(() => {
+    fs.rmSync(noteVaultDir, { recursive: true, force: true });
+  });
+
+  it('creates a note with correct frontmatter', () => {
+    const result = createVaultNote('Тестова нотатка', 'робота', noteVaultDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const filePath = path.join(noteVaultDir, 'notes', result.filename);
+    expect(fs.existsSync(filePath)).toBe(true);
+
+    const content = fs.readFileSync(filePath, 'utf-8');
+    expect(content).toContain('sphere: робота');
+    expect(content).toContain('needs_ai_format: true');
+    expect(content).toContain('tags:\n  - note');
+    expect(content).toContain('Тестова нотатка');
+  });
+
+  it('defaults sphere to інше', () => {
+    const result = createVaultNote('Default sphere test', undefined, noteVaultDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const content = fs.readFileSync(
+      path.join(noteVaultDir, 'notes', result.filename),
+      'utf-8',
+    );
+    expect(content).toContain('sphere: інше');
+  });
+
+  it('rejects empty text', () => {
+    const result = createVaultNote('', 'робота', noteVaultDir);
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects invalid sphere', () => {
+    const result = createVaultNote('test', 'invalid' as never, noteVaultDir);
+    expect(result.ok).toBe(false);
   });
 });
