@@ -110,6 +110,11 @@ export function startCredentialProxy(
             const isJson = contentType.includes('application/json');
             const isSse = contentType.includes('text/event-stream');
 
+            logger.info(
+              { cleanPath, contentType, status: upRes.statusCode, isMessages, isJson, isSse },
+              'Proxy response routing',
+            );
+
             res.writeHead(upRes.statusCode!, upRes.headers);
 
             if (isMessages && upRes.statusCode === 200 && isJson) {

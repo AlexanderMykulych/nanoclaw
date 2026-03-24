@@ -128,7 +128,7 @@ export function logUsage(
       output_tokens: outputTokens,
       cost_usd: cost,
     });
-    logger.debug(
+    logger.info(
       { model, inputTokens, outputTokens, cost, ...meta },
       'Token usage logged',
     );
