@@ -16,6 +16,12 @@ import { request as httpRequest, RequestOptions } from 'http';
 
 import { readEnvFile } from './env.js';
 import { logger } from './logger.js';
+import {
+  parseMetaPrefix,
+  extractUsageFromJson,
+  SseUsageAccumulator,
+  logUsage,
+} from './usage-tracker.js';
 
 export type AuthMode = 'api-key' | 'oauth';
 
@@ -50,6 +56,17 @@ export function startCredentialProxy(
       req.on('data', (c) => chunks.push(c));
       req.on('end', () => {
         const body = Buffer.concat(chunks);
+
+        // Parse metadata prefix from URL and strip it for upstream
+        const { meta, cleanPath } = parseMetaPrefix(req.url || '/');
+
+        // Extract model from request body for usage attribution
+        let requestModel = 'unknown';
+        try {
+          const reqData = JSON.parse(body.toString());
+          if (reqData.model) requestModel = reqData.model;
+        } catch {}
+
         const headers: Record<string, string | number | string[] | undefined> =
           {
             ...(req.headers as Record<string, string>),
@@ -83,14 +100,69 @@ export function startCredentialProxy(
           {
             hostname: upstreamUrl.hostname,
             port: upstreamUrl.port || (isHttps ? 443 : 80),
-            path: req.url,
+            path: cleanPath,
             method: req.method,
             headers,
           } as RequestOptions,
           (upRes) => {
+            const contentType = (upRes.headers['content-type'] || '') as string;
+            const isMessages = cleanPath.includes('/v1/messages');
+            const isJson = contentType.includes('application/json');
+            const isSse = contentType.includes('text/event-stream');
+
             res.writeHead(upRes.statusCode!, upRes.headers);
-            upRes.pipe(res);
+
+            if (isMessages && upRes.statusCode === 200 && isJson) {
+              // Buffer JSON response, extract usage, then forward
+              const resChunks: Buffer[] = [];
+              upRes.on('data', (c: Buffer) => resChunks.push(c));
+              upRes.on('end', () => {
+                const resBody = Buffer.concat(resChunks);
+                res.end(resBody);
+                const usage = extractUsageFromJson(resBody.toString());
+                if (usage) {
+                  logUsage(
+                    meta,
+                    usage.model || requestModel,
+                    usage.inputTokens,
+                    usage.outputTokens,
+                  );
+                }
+              });
+            } else if (isMessages && upRes.statusCode === 200 && isSse) {
+              // Stream SSE through, accumulate usage
+              const acc = new SseUsageAccumulator();
+              upRes.on('data', (chunk: Buffer) => {
+                res.write(chunk);
+                acc.processChunk(chunk.toString());
+              });
+              upRes.on('end', () => {
+                res.end();
+                const usage = acc.getResult();
+                if (usage) {
+                  logUsage(
+                    meta,
+                    usage.model || requestModel,
+                    usage.inputTokens,
+                    usage.outputTokens,
+                  );
+                }
+              });
+            } else {
+              // Pass through unchanged
+              upRes.pipe(res);
+            }
           },
+        );
+
+        logger.info(
+          {
+            method: req.method,
+            url: cleanPath,
+            hasAuth: !!headers['authorization'],
+            hasApiKey: !!headers['x-api-key'],
+          },
+          'Credential proxy request',
         );
 
         upstream.on('error', (err) => {
