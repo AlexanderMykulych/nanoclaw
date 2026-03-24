@@ -14,6 +14,14 @@ Replace the existing Scheduled Tasks page in the MiniApp with a tabbed view: "St
 
 Two new endpoints in `src/api.ts`, backed by new aggregation queries in `src/db.ts`.
 
+New DB functions: `getTaskStats(days: number)` and `getTaskTimeline(taskId: string, days: number)` — exported from `db.ts`, imported in `api.ts`.
+
+**Routing order:** Both new endpoints must be added as exact/regex matches **before** the existing `/api/tasks/:id/logs` regex in the `if/else if` chain in `api.ts`. Specifically:
+1. `path === '/api/tasks/stats'` — exact match, immediately after `path === '/api/tasks'`
+2. `path.match(/^\/api\/tasks\/[^/]+\/timeline$/)` — regex, adjacent to existing `/logs` regex
+
+**Parameter validation:** `days` query parameter parsed as integer, default 7, clamped to `[1, 30]`. Follow the existing `getMetrics` hours clamping pattern.
+
 **`GET /api/tasks/stats?days=7`**
 
 Returns aggregated statistics per task for the last N days (default 7).
@@ -41,12 +49,12 @@ SELECT
   SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
   SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as error_count,
   SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) as skipped_count,
-  ROUND(AVG(CASE WHEN status != 'skipped' THEN duration_ms END)) as avg_duration_ms,
-  MAX(CASE WHEN status != 'skipped' THEN duration_ms END) as max_duration_ms,
-  MIN(CASE WHEN status != 'skipped' THEN duration_ms END) as min_duration_ms,
+  COALESCE(ROUND(AVG(CASE WHEN status != 'skipped' THEN duration_ms END)), 0) as avg_duration_ms,
+  COALESCE(MAX(CASE WHEN status != 'skipped' THEN duration_ms END), 0) as max_duration_ms,
+  COALESCE(MIN(CASE WHEN status != 'skipped' THEN duration_ms END), 0) as min_duration_ms,
   MAX(run_at) as last_run,
-  ROUND(100.0 * SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) /
-    NULLIF(SUM(CASE WHEN status != 'skipped' THEN 1 ELSE 0 END), 0), 1) as success_rate
+  COALESCE(ROUND(100.0 * SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) /
+    NULLIF(SUM(CASE WHEN status != 'skipped' THEN 1 ELSE 0 END), 0), 1), 100.0) as success_rate
 FROM task_run_logs
 WHERE run_at > datetime('now', '-' || ? || ' days')
 GROUP BY task_id
@@ -67,14 +75,20 @@ interface TimelinePoint {
 }
 ```
 
-SQL:
+SQL (downsampled to hourly buckets to handle high-frequency tasks — up to ~10k runs/week):
 ```sql
-SELECT run_at, duration_ms, status
+SELECT
+  strftime('%Y-%m-%dT%H:00', run_at) as run_at,
+  ROUND(AVG(duration_ms)) as duration_ms,
+  CASE WHEN SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) > 0 THEN 'error' ELSE 'success' END as status
 FROM task_run_logs
 WHERE task_id = ? AND status != 'skipped'
   AND run_at > datetime('now', '-' || ? || ' days')
+GROUP BY strftime('%Y-%m-%dT%H:00', run_at)
 ORDER BY run_at ASC
 ```
+
+This aggregates to at most ~168 points (24h × 7 days) regardless of task frequency, keeping the SVG chart performant.
 
 ### Frontend
 
@@ -94,13 +108,17 @@ Tabs at top: "Stats" (default) / "List".
 - Tap on card → expands inline timeline chart
 - Chart fetched lazily from `/api/tasks/:id/timeline?days=7`
 
+**Stats tab data:** Fetches both `/api/tasks/stats` and `/api/tasks` (for names/schedule info), joins client-side by `task_id`.
+
 **Timeline chart:**
 - Inline SVG, no external libraries
-- X-axis: time (7 days)
-- Y-axis: duration in seconds
+- X-axis: time (7 days), no labels (compact)
+- Y-axis: duration in seconds, min/max labels
 - Points connected by line, colored by status (green=success, red=error)
-- Responsive width (fills card width)
+- Responsive width (fills card width via `viewBox`)
 - Height: 120px fixed
+- Edge cases: single point → show dot only, zero points → "No data" text
+- Data is hourly-bucketed server-side (max ~168 points), so rendering is always fast
 
 **List tab:**
 - Existing TasksView functionality unchanged (task list with expandable run history)
