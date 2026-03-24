@@ -78,6 +78,9 @@ export function startCredentialProxy(
         delete headers['connection'];
         delete headers['keep-alive'];
         delete headers['transfer-encoding'];
+        // Remove accept-encoding so upstream returns uncompressed responses
+        // (needed for SSE usage tracking — we parse the plaintext stream)
+        delete headers['accept-encoding'];
 
         if (authMode === 'api-key') {
           // API key mode: inject x-api-key on every request

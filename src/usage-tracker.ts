@@ -74,13 +74,7 @@ export class SseUsageAccumulator {
   private outputTokens = 0;
   private model = 'unknown';
 
-  private chunkCount = 0;
-
   processChunk(chunk: string): void {
-    this.chunkCount++;
-    if (this.chunkCount <= 2) {
-      logger.info({ chunkLen: chunk.length, first200: chunk.slice(0, 200) }, 'SSE raw chunk');
-    }
     this.buffer += chunk;
     const lines = this.buffer.split('\n');
     this.buffer = lines.pop() || '';
@@ -91,24 +85,12 @@ export class SseUsageAccumulator {
       if (jsonStr === '[DONE]') continue;
       try {
         const data = JSON.parse(jsonStr);
-        if (data.type === 'message_start') {
-          logger.info(
-            { hasUsage: !!data.message?.usage, model: data.message?.model },
-            'SSE message_start',
-          );
-          if (data.message?.usage) {
-            this.inputTokens = data.message.usage.input_tokens || 0;
-            this.model = data.message.model || this.model;
-          }
+        if (data.type === 'message_start' && data.message?.usage) {
+          this.inputTokens = data.message.usage.input_tokens || 0;
+          this.model = data.message.model || this.model;
         }
-        if (data.type === 'message_delta') {
-          logger.info(
-            { hasUsage: !!data.usage, outputTokens: data.usage?.output_tokens },
-            'SSE message_delta',
-          );
-          if (data.usage) {
-            this.outputTokens = data.usage.output_tokens || 0;
-          }
+        if (data.type === 'message_delta' && data.usage) {
+          this.outputTokens = data.usage.output_tokens || 0;
         }
       } catch {
         // Skip unparseable SSE lines
