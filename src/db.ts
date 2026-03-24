@@ -112,6 +112,19 @@ function createSchema(database: Database.Database): void {
       uptime_seconds REAL
     );
     CREATE INDEX IF NOT EXISTS idx_metrics_timestamp ON metrics(timestamp);
+
+    CREATE TABLE IF NOT EXISTS token_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+      group_folder TEXT,
+      task_id TEXT,
+      model TEXT NOT NULL,
+      input_tokens INTEGER NOT NULL,
+      output_tokens INTEGER NOT NULL,
+      cost_usd REAL NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_token_usage_timestamp ON token_usage(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_token_usage_task ON token_usage(task_id, timestamp);
   `);
 
   // Add context_mode column if it doesn't exist (migration for existing DBs)
@@ -899,6 +912,87 @@ export function getTaskTimeline(taskId: string, days: number): TimelinePoint[] {
       ORDER BY run_at ASC`,
     )
     .all(taskId, days) as TimelinePoint[];
+}
+
+// --- token usage ---
+
+export interface TokenUsageRecord {
+  group_folder: string | null;
+  task_id: string | null;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+
+export function insertTokenUsage(record: TokenUsageRecord): void {
+  db.prepare(
+    `INSERT INTO token_usage (group_folder, task_id, model, input_tokens, output_tokens, cost_usd)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(
+    record.group_folder,
+    record.task_id,
+    record.model,
+    record.input_tokens,
+    record.output_tokens,
+    record.cost_usd,
+  );
+}
+
+export interface UsageSummaryRow {
+  date: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  request_count: number;
+}
+
+export function getTokenUsageSummary(days: number): UsageSummaryRow[] {
+  return db
+    .prepare(
+      `SELECT
+        date(timestamp) as date,
+        SUM(input_tokens) as input_tokens,
+        SUM(output_tokens) as output_tokens,
+        ROUND(SUM(cost_usd), 4) as cost_usd,
+        COUNT(*) as request_count
+      FROM token_usage
+      WHERE timestamp > datetime('now', '-' || ? || ' days')
+      GROUP BY date(timestamp)
+      ORDER BY date ASC`,
+    )
+    .all(days) as UsageSummaryRow[];
+}
+
+export interface UsageByTaskRow {
+  task_id: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  request_count: number;
+}
+
+export function getTokenUsageByTask(days: number): UsageByTaskRow[] {
+  return db
+    .prepare(
+      `SELECT
+        COALESCE(task_id, '(messages)') as task_id,
+        SUM(input_tokens) as input_tokens,
+        SUM(output_tokens) as output_tokens,
+        ROUND(SUM(cost_usd), 4) as cost_usd,
+        COUNT(*) as request_count
+      FROM token_usage
+      WHERE timestamp > datetime('now', '-' || ? || ' days')
+      GROUP BY task_id
+      ORDER BY cost_usd DESC`,
+    )
+    .all(days) as UsageByTaskRow[];
+}
+
+export function cleanupTokenUsage(days: number): void {
+  db.prepare(
+    `DELETE FROM token_usage WHERE timestamp < datetime('now', '-' || ? || ' days')`,
+  ).run(days);
 }
 
 // --- metrics ---

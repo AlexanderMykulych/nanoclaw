@@ -1,6 +1,6 @@
 import os from 'os';
 import fs from 'fs';
-import { insertMetric, cleanupMetrics } from './db.js';
+import { insertMetric, cleanupMetrics, cleanupTokenUsage } from './db.js';
 import { logger } from './logger.js';
 import type { GroupQueue } from './group-queue.js';
 
@@ -15,7 +15,12 @@ function getCpuPercent(): number {
   let total = 0;
   for (const cpu of cpus) {
     idle += cpu.times.idle;
-    total += cpu.times.user + cpu.times.nice + cpu.times.sys + cpu.times.idle + cpu.times.irq;
+    total +=
+      cpu.times.user +
+      cpu.times.nice +
+      cpu.times.sys +
+      cpu.times.idle +
+      cpu.times.irq;
   }
 
   if (!prevCpuInfo) {
@@ -80,7 +85,9 @@ export function startMetricsCollector(queue: GroupQueue): void {
     getCpuPercent(); // prime the baseline
     setTimeout(() => {
       collectMetric(queue);
-      logger.info('Metrics collector started (interval: 5min, retention: 3 days)');
+      logger.info(
+        'Metrics collector started (interval: 5min, retention: 3 days)',
+      );
     }, 5000);
   }, 5000);
 
@@ -90,5 +97,8 @@ export function startMetricsCollector(queue: GroupQueue): void {
   }, COLLECT_INTERVAL);
 
   // Cleanup daily
-  setInterval(() => cleanupMetrics(RETENTION_DAYS), 24 * 60 * 60 * 1000);
+  setInterval(() => {
+    cleanupMetrics(RETENTION_DAYS);
+    cleanupTokenUsage(30);
+  }, 24 * 60 * 60 * 1000);
 }
