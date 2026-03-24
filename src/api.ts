@@ -5,6 +5,8 @@ import {
   getRegisteredGroupsList,
   getScheduledTasks,
   getTaskRunLogs,
+  getTaskStats,
+  getTaskTimeline,
   getErrors,
   getErrorCountSince,
   getMetrics,
@@ -52,7 +54,8 @@ export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
         res.writeHead(204, {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Telegram-Web-App-Init-Data, Content-Type',
+          'Access-Control-Allow-Headers':
+            'Telegram-Web-App-Init-Data, Content-Type',
         });
         res.end();
         return;
@@ -108,6 +111,13 @@ export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
           sendJson(res, 200, result);
         } else if (path === '/api/tasks') {
           sendJson(res, 200, getScheduledTasks());
+        } else if (path === '/api/tasks/stats') {
+          const days = Math.max(1, Math.min(30, parseInt(params.get('days') || '7', 10) || 7));
+          sendJson(res, 200, getTaskStats(days));
+        } else if (path.match(/^\/api\/tasks\/[^/]+\/timeline$/)) {
+          const taskId = path.split('/')[3];
+          const days = Math.max(1, Math.min(30, parseInt(params.get('days') || '7', 10) || 7));
+          sendJson(res, 200, getTaskTimeline(taskId, days));
         } else if (path.match(/^\/api\/tasks\/[^/]+\/logs$/)) {
           const taskId = path.split('/')[3];
           sendJson(res, 200, getTaskRunLogs(taskId));

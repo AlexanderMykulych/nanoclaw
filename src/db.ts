@@ -808,6 +808,67 @@ export function getTaskRunLogs(taskId: string): Array<{
   }>;
 }
 
+export interface TaskStatsRow {
+  task_id: string;
+  total_runs: number;
+  success_count: number;
+  error_count: number;
+  skipped_count: number;
+  avg_duration_ms: number;
+  max_duration_ms: number;
+  min_duration_ms: number;
+  last_run: string | null;
+  success_rate: number;
+}
+
+export function getTaskStats(days: number): TaskStatsRow[] {
+  return db
+    .prepare(
+      `SELECT
+        task_id,
+        COUNT(*) as total_runs,
+        SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
+        SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as error_count,
+        SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) as skipped_count,
+        COALESCE(ROUND(AVG(CASE WHEN status != 'skipped' THEN duration_ms END)), 0) as avg_duration_ms,
+        COALESCE(MAX(CASE WHEN status != 'skipped' THEN duration_ms END), 0) as max_duration_ms,
+        COALESCE(MIN(CASE WHEN status != 'skipped' THEN duration_ms END), 0) as min_duration_ms,
+        MAX(run_at) as last_run,
+        COALESCE(ROUND(100.0 * SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) /
+          NULLIF(SUM(CASE WHEN status != 'skipped' THEN 1 ELSE 0 END), 0), 1), 100.0) as success_rate
+      FROM task_run_logs
+      WHERE run_at > datetime('now', '-' || ? || ' days')
+      GROUP BY task_id
+      ORDER BY success_rate ASC, total_runs DESC`,
+    )
+    .all(days) as TaskStatsRow[];
+}
+
+export interface TimelinePoint {
+  run_at: string;
+  duration_ms: number;
+  status: string;
+}
+
+export function getTaskTimeline(
+  taskId: string,
+  days: number,
+): TimelinePoint[] {
+  return db
+    .prepare(
+      `SELECT
+        strftime('%Y-%m-%dT%H:00', run_at) as run_at,
+        ROUND(AVG(duration_ms)) as duration_ms,
+        CASE WHEN SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) > 0 THEN 'error' ELSE 'success' END as status
+      FROM task_run_logs
+      WHERE task_id = ? AND status != 'skipped'
+        AND run_at > datetime('now', '-' || ? || ' days')
+      GROUP BY strftime('%Y-%m-%dT%H:00', run_at)
+      ORDER BY run_at ASC`,
+    )
+    .all(taskId, days) as TimelinePoint[];
+}
+
 // --- metrics ---
 
 export interface MetricRow {
@@ -828,27 +889,42 @@ export interface MetricRow {
   uptime_seconds: number;
 }
 
-export function insertMetric(metric: Omit<MetricRow, 'id' | 'timestamp'>): void {
-  db.prepare(`
+export function insertMetric(
+  metric: Omit<MetricRow, 'id' | 'timestamp'>,
+): void {
+  db.prepare(
+    `
     INSERT INTO metrics (cpu_percent, mem_total_mb, mem_used_mb, mem_percent, disk_total_gb, disk_used_gb, disk_percent, load_avg_1, load_avg_5, load_avg_15, containers_active, containers_queued, uptime_seconds)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    metric.cpu_percent, metric.mem_total_mb, metric.mem_used_mb, metric.mem_percent,
-    metric.disk_total_gb, metric.disk_used_gb, metric.disk_percent,
-    metric.load_avg_1, metric.load_avg_5, metric.load_avg_15,
-    metric.containers_active, metric.containers_queued, metric.uptime_seconds,
+  `,
+  ).run(
+    metric.cpu_percent,
+    metric.mem_total_mb,
+    metric.mem_used_mb,
+    metric.mem_percent,
+    metric.disk_total_gb,
+    metric.disk_used_gb,
+    metric.disk_percent,
+    metric.load_avg_1,
+    metric.load_avg_5,
+    metric.load_avg_15,
+    metric.containers_active,
+    metric.containers_queued,
+    metric.uptime_seconds,
   );
 }
 
 export function getMetrics(hours: number): MetricRow[] {
-  return db.prepare(
-    `SELECT * FROM metrics WHERE timestamp > datetime('now', '-' || ? || ' hours') ORDER BY timestamp ASC`
-  ).all(hours) as MetricRow[];
+  return db
+    .prepare(
+      `SELECT * FROM metrics WHERE timestamp > datetime('now', '-' || ? || ' hours') ORDER BY timestamp ASC`,
+    )
+    .all(hours) as MetricRow[];
 }
 
 export function cleanupMetrics(days: number): void {
   db.prepare(
-    `DELETE FROM metrics WHERE timestamp < datetime('now', '-' || ? || ' days')`
+    `DELETE FROM metrics WHERE timestamp < datetime('now', '-' || ? || ' days')`,
   ).run(days);
 }
 
