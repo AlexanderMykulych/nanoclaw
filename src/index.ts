@@ -44,6 +44,7 @@ import {
   setRegisteredGroup,
   setRouterState,
   setSession,
+  deleteSession,
   storeChatMetadata,
   storeMessage,
 } from './db.js';
@@ -71,9 +72,72 @@ let sessions: Record<string, string> = {};
 let registeredGroups: Record<string, RegisteredGroup> = {};
 let lastAgentTimestamp: Record<string, string> = {};
 let messageLoopRunning = false;
+const consecutiveErrors: Record<string, number> = {};
 
 const channels: Channel[] = [];
 const queue = new GroupQueue();
+
+// --- Smart error recovery ---
+const AUTH_ERROR_PATTERNS = [
+  'hit your limit',
+  'authenticate',
+  'bearer token',
+  'Credit bal',
+  'new token',
+  'token has expired',
+];
+
+function isAuthError(errorText: string | undefined): boolean {
+  if (!errorText) return false;
+  const lower = errorText.toLowerCase();
+  return AUTH_ERROR_PATTERNS.some((p) => lower.includes(p.toLowerCase()));
+}
+
+function handleContainerError(
+  groupFolder: string,
+  errorText: string | undefined,
+): void {
+  if (isAuthError(errorText)) {
+    logger.error(
+      { group: groupFolder },
+      'Auth error detected — notifying user',
+    );
+    // Notify main group via Telegram
+    const mainJid = Object.entries(registeredGroups).find(
+      ([, g]) => g.isMain === true,
+    )?.[0];
+    if (mainJid) {
+      const channel = findChannel(channels, mainJid);
+      channel
+        ?.sendMessage(
+          mainJid,
+          '⚠️ Auth token expired or rate limited. Tasks may fail until token is refreshed.',
+        )
+        .catch(() => {});
+    }
+    // Reset consecutive error counter — auth errors are not session problems
+    consecutiveErrors[groupFolder] = 0;
+    return;
+  }
+
+  // Track consecutive non-auth errors for session reset
+  consecutiveErrors[groupFolder] =
+    (consecutiveErrors[groupFolder] || 0) + 1;
+
+  if (consecutiveErrors[groupFolder] >= 3) {
+    logger.warn(
+      { group: groupFolder, count: consecutiveErrors[groupFolder] },
+      'Auto-resetting session after consecutive failures',
+    );
+    delete sessions[groupFolder];
+    deleteSession(groupFolder);
+    consecutiveErrors[groupFolder] = 0;
+  }
+}
+
+function clearErrorCount(groupFolder: string): void {
+  consecutiveErrors[groupFolder] = 0;
+}
 
 function loadState(): void {
   lastTimestamp = getRouterState('last_timestamp') || '';
@@ -383,9 +447,11 @@ async function runAgent(
         { group: group.name, error: output.error },
         'Container agent error',
       );
+      handleContainerError(group.folder, output.error);
       return 'error';
     }
 
+    clearErrorCount(group.folder);
     return 'success';
   } catch (err) {
     logger.error({ group: group.name, err }, 'Agent error');
