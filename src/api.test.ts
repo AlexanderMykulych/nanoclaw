@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { _initTestDatabase, logError } from './db.js';
+import { _initTestDatabase, logError, logTaskRun, createTask } from './db.js';
 import { GroupQueue } from './group-queue.js';
 
 import { startApiServer } from './api.js';
@@ -17,6 +17,51 @@ let port: number;
 beforeAll(async () => {
   _initTestDatabase();
   logError({ level: 'error', source: 'container', message: 'Test error' });
+
+  // Seed parent task for FK constraint, then task run logs for stats tests
+  createTask({
+    id: 'obs-test-task',
+    group_folder: 'test',
+    chat_jid: 'test@test',
+    prompt: 'test',
+    schedule_type: 'interval',
+    schedule_value: '1h',
+    next_run: null,
+    status: 'active',
+    created_at: new Date().toISOString(),
+  });
+  logTaskRun({
+    task_id: 'obs-test-task',
+    run_at: new Date().toISOString(),
+    duration_ms: 5000,
+    status: 'success',
+    result: 'ok',
+    error: null,
+  });
+  logTaskRun({
+    task_id: 'obs-test-task',
+    run_at: new Date().toISOString(),
+    duration_ms: 10000,
+    status: 'success',
+    result: 'ok',
+    error: null,
+  });
+  logTaskRun({
+    task_id: 'obs-test-task',
+    run_at: new Date().toISOString(),
+    duration_ms: 8000,
+    status: 'error',
+    result: null,
+    error: 'timeout',
+  });
+  logTaskRun({
+    task_id: 'obs-test-task',
+    run_at: new Date().toISOString(),
+    duration_ms: 0,
+    status: 'skipped',
+    result: null,
+    error: null,
+  });
 
   const queue = new GroupQueue();
   server = await startApiServer(0, { queue, version: '1.0.0-test' });
@@ -79,5 +124,39 @@ describe('API endpoints', () => {
   it('GET /api/vault/unknown returns 404', async () => {
     const res = await fetchApi('/api/vault/unknown');
     expect(res.status).toBe(404);
+  });
+
+  it('GET /api/tasks/stats returns correct aggregated data', async () => {
+    const res = await fetchApi('/api/tasks/stats');
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as Array<Record<string, unknown>>;
+    expect(Array.isArray(data)).toBe(true);
+    const task = data.find((t) => t.task_id === 'obs-test-task');
+    expect(task).toBeDefined();
+    expect(task!.total_runs).toBe(4);
+    expect(task!.success_count).toBe(2);
+    expect(task!.error_count).toBe(1);
+    expect(task!.skipped_count).toBe(1);
+    expect(task!.avg_duration_ms).toBeCloseTo(7667, -2);
+    expect(task!.max_duration_ms).toBe(10000);
+    expect(task!.min_duration_ms).toBe(5000);
+    expect(task!.success_rate).toBeCloseTo(66.7, 0);
+  });
+
+  it('GET /api/tasks/stats clamps days param', async () => {
+    const res = await fetchApi('/api/tasks/stats?days=999');
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as unknown[];
+    expect(Array.isArray(data)).toBe(true);
+  });
+
+  it('GET /api/tasks/obs-test-task/timeline returns hourly buckets', async () => {
+    const res = await fetchApi('/api/tasks/obs-test-task/timeline');
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as Array<Record<string, unknown>>;
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBe(1);
+    expect(data[0].status).toBe('error');
+    expect(typeof data[0].duration_ms).toBe('number');
   });
 });
