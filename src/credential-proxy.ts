@@ -111,7 +111,14 @@ export function startCredentialProxy(
             const isSse = contentType.includes('text/event-stream');
 
             logger.info(
-              { cleanPath, contentType, status: upRes.statusCode, isMessages, isJson, isSse },
+              {
+                cleanPath,
+                contentType,
+                status: upRes.statusCode,
+                isMessages,
+                isJson,
+                isSse,
+              },
               'Proxy response routing',
             );
 
@@ -144,6 +151,7 @@ export function startCredentialProxy(
               upRes.on('end', () => {
                 res.end();
                 const usage = acc.getResult();
+                logger.info({ usage, hasResult: !!usage }, 'SSE stream ended');
                 if (usage) {
                   logUsage(
                     meta,
