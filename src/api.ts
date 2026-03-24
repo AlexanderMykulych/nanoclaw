@@ -10,6 +10,8 @@ import {
   getErrors,
   getErrorCountSince,
   getMetrics,
+  getTokenUsageSummary,
+  getTokenUsageByTask,
 } from './db.js';
 import type { GroupQueue } from './group-queue.js';
 import { readEnvFile } from './env.js';
@@ -109,14 +111,26 @@ export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
             has_active_container: activeJids.has(g.jid),
           }));
           sendJson(res, 200, result);
+        } else if (path === '/api/token-usage/summary') {
+          const days = Math.max(1, Math.min(30, parseInt(params.get('days') || '7', 10) || 7));
+          sendJson(res, 200, getTokenUsageSummary(days));
+        } else if (path === '/api/token-usage/by-task') {
+          const days = Math.max(1, Math.min(30, parseInt(params.get('days') || '7', 10) || 7));
+          sendJson(res, 200, getTokenUsageByTask(days));
         } else if (path === '/api/tasks') {
           sendJson(res, 200, getScheduledTasks());
         } else if (path === '/api/tasks/stats') {
-          const days = Math.max(1, Math.min(30, parseInt(params.get('days') || '7', 10) || 7));
+          const days = Math.max(
+            1,
+            Math.min(30, parseInt(params.get('days') || '7', 10) || 7),
+          );
           sendJson(res, 200, getTaskStats(days));
         } else if (path.match(/^\/api\/tasks\/[^/]+\/timeline$/)) {
           const taskId = path.split('/')[3];
-          const days = Math.max(1, Math.min(30, parseInt(params.get('days') || '7', 10) || 7));
+          const days = Math.max(
+            1,
+            Math.min(30, parseInt(params.get('days') || '7', 10) || 7),
+          );
           sendJson(res, 200, getTaskTimeline(taskId, days));
         } else if (path.match(/^\/api\/tasks\/[^/]+\/logs$/)) {
           const taskId = path.split('/')[3];

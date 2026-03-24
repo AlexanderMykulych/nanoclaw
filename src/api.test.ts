@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { _initTestDatabase, logError, logTaskRun, createTask } from './db.js';
+import { _initTestDatabase, logError, logTaskRun, createTask, insertTokenUsage } from './db.js';
 import { GroupQueue } from './group-queue.js';
 
 import { startApiServer } from './api.js';
@@ -71,6 +71,11 @@ beforeAll(async () => {
     result: null,
     error: 'Failed to authenticate. API Error: Invalid bearer token',
   });
+
+  // Seed token usage for usage API tests
+  insertTokenUsage({ group_folder: 'telegram_main', task_id: 'obs-test-task', model: 'claude-sonnet-4-20250514', input_tokens: 1000, output_tokens: 500, cost_usd: 0.0105 });
+  insertTokenUsage({ group_folder: 'telegram_main', task_id: 'obs-test-task', model: 'claude-sonnet-4-20250514', input_tokens: 2000, output_tokens: 1000, cost_usd: 0.021 });
+  insertTokenUsage({ group_folder: 'telegram_main', task_id: null, model: 'claude-sonnet-4-20250514', input_tokens: 500, output_tokens: 200, cost_usd: 0.0045 });
 
   const queue = new GroupQueue();
   server = await startApiServer(0, { queue, version: '1.0.0-test' });
@@ -172,5 +177,30 @@ describe('API endpoints', () => {
     expect(data.length).toBe(1);
     expect(data[0].status).toBe('error');
     expect(typeof data[0].duration_ms).toBe('number');
+  });
+
+  it('GET /api/token-usage/summary returns daily aggregation', async () => {
+    const res = await fetchApi('/api/token-usage/summary');
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as Array<Record<string, unknown>>;
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBe(1);
+    expect(data[0].input_tokens).toBe(3500);
+    expect(data[0].output_tokens).toBe(1700);
+    expect(data[0].request_count).toBe(3);
+  });
+
+  it('GET /api/token-usage/by-task returns per-task breakdown', async () => {
+    const res = await fetchApi('/api/token-usage/by-task');
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as Array<Record<string, unknown>>;
+    expect(Array.isArray(data)).toBe(true);
+    const task = data.find((t) => t.task_id === 'obs-test-task');
+    expect(task).toBeDefined();
+    expect(task!.input_tokens).toBe(3000);
+    expect(task!.request_count).toBe(2);
+    const msgs = data.find((t) => t.task_id === '(messages)');
+    expect(msgs).toBeDefined();
+    expect(msgs!.input_tokens).toBe(500);
   });
 });
