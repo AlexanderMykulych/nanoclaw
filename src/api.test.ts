@@ -62,6 +62,14 @@ beforeAll(async () => {
     result: null,
     error: null,
   });
+  logTaskRun({
+    task_id: 'obs-test-task',
+    run_at: new Date().toISOString(),
+    duration_ms: 7000,
+    status: 'error',
+    result: null,
+    error: 'Failed to authenticate. API Error: Invalid bearer token',
+  });
 
   const queue = new GroupQueue();
   server = await startApiServer(0, { queue, version: '1.0.0-test' });
@@ -133,14 +141,19 @@ describe('API endpoints', () => {
     expect(Array.isArray(data)).toBe(true);
     const task = data.find((t) => t.task_id === 'obs-test-task');
     expect(task).toBeDefined();
-    expect(task!.total_runs).toBe(4);
+    expect(task!.total_runs).toBe(5);
     expect(task!.success_count).toBe(2);
-    expect(task!.error_count).toBe(1);
+    expect(task!.error_count).toBe(1); // only real errors, not auth
     expect(task!.skipped_count).toBe(1);
-    expect(task!.avg_duration_ms).toBeCloseTo(7667, -2);
+    expect(task!.auth_error_count).toBe(1); // auth error filtered out
+    // avg/max/min based on success runs only (5000, 10000)
+    expect(task!.avg_duration_ms).toBeCloseTo(7500, -2);
     expect(task!.max_duration_ms).toBe(10000);
     expect(task!.min_duration_ms).toBe(5000);
+    // success_rate = 2 / (2 + 1) = 66.7% (auth errors excluded from denominator)
     expect(task!.success_rate).toBeCloseTo(66.7, 0);
+    // precheck_saved_pct = 1 skipped / 5 total = 20%
+    expect(task!.precheck_saved_pct).toBe(20);
   });
 
   it('GET /api/tasks/stats clamps days param', async () => {

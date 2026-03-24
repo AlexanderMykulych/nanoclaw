@@ -808,17 +808,29 @@ export function getTaskRunLogs(taskId: string): Array<{
   }>;
 }
 
+// Auth/rate-limit errors to exclude from stats — these are infra issues, not task failures
+const AUTH_ERROR_FILTER = `
+  AND NOT (status = 'error' AND (
+    error LIKE '%hit your limit%'
+    OR error LIKE '%authenticate%'
+    OR error LIKE '%bearer token%'
+    OR error LIKE '%Credit bal%'
+    OR error LIKE '%new token%'
+  ))`;
+
 export interface TaskStatsRow {
   task_id: string;
   total_runs: number;
   success_count: number;
   error_count: number;
   skipped_count: number;
+  auth_error_count: number;
   avg_duration_ms: number;
   max_duration_ms: number;
   min_duration_ms: number;
   last_run: string | null;
   success_rate: number;
+  precheck_saved_pct: number;
 }
 
 export function getTaskStats(days: number): TaskStatsRow[] {
@@ -828,14 +840,32 @@ export function getTaskStats(days: number): TaskStatsRow[] {
         task_id,
         COUNT(*) as total_runs,
         SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
-        SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as error_count,
+        SUM(CASE WHEN status = 'error' AND NOT (
+          error LIKE '%hit your limit%' OR error LIKE '%authenticate%'
+          OR error LIKE '%bearer token%' OR error LIKE '%Credit bal%'
+          OR error LIKE '%new token%'
+        ) THEN 1 ELSE 0 END) as error_count,
         SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) as skipped_count,
-        COALESCE(ROUND(AVG(CASE WHEN status != 'skipped' THEN duration_ms END)), 0) as avg_duration_ms,
-        COALESCE(MAX(CASE WHEN status != 'skipped' THEN duration_ms END), 0) as max_duration_ms,
-        COALESCE(MIN(CASE WHEN status != 'skipped' THEN duration_ms END), 0) as min_duration_ms,
+        SUM(CASE WHEN status = 'error' AND (
+          error LIKE '%hit your limit%' OR error LIKE '%authenticate%'
+          OR error LIKE '%bearer token%' OR error LIKE '%Credit bal%'
+          OR error LIKE '%new token%'
+        ) THEN 1 ELSE 0 END) as auth_error_count,
+        COALESCE(ROUND(AVG(CASE WHEN status = 'success' THEN duration_ms END)), 0) as avg_duration_ms,
+        COALESCE(MAX(CASE WHEN status = 'success' THEN duration_ms END), 0) as max_duration_ms,
+        COALESCE(MIN(CASE WHEN status = 'success' THEN duration_ms END), 0) as min_duration_ms,
         MAX(run_at) as last_run,
         COALESCE(ROUND(100.0 * SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) /
-          NULLIF(SUM(CASE WHEN status != 'skipped' THEN 1 ELSE 0 END), 0), 1), 100.0) as success_rate
+          NULLIF(
+            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) +
+            SUM(CASE WHEN status = 'error' AND NOT (
+              error LIKE '%hit your limit%' OR error LIKE '%authenticate%'
+              OR error LIKE '%bearer token%' OR error LIKE '%Credit bal%'
+              OR error LIKE '%new token%'
+            ) THEN 1 ELSE 0 END),
+          0), 1), 100.0) as success_rate,
+        COALESCE(ROUND(100.0 * SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) /
+          NULLIF(COUNT(*), 0), 1), 0) as precheck_saved_pct
       FROM task_run_logs
       WHERE run_at > datetime('now', '-' || ? || ' days')
       GROUP BY task_id
@@ -850,18 +880,20 @@ export interface TimelinePoint {
   status: string;
 }
 
-export function getTaskTimeline(
-  taskId: string,
-  days: number,
-): TimelinePoint[] {
+export function getTaskTimeline(taskId: string, days: number): TimelinePoint[] {
   return db
     .prepare(
       `SELECT
         strftime('%Y-%m-%dT%H:00', run_at) as run_at,
         ROUND(AVG(duration_ms)) as duration_ms,
-        CASE WHEN SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) > 0 THEN 'error' ELSE 'success' END as status
+        CASE WHEN SUM(CASE WHEN status = 'error' AND NOT (
+          error LIKE '%hit your limit%' OR error LIKE '%authenticate%'
+          OR error LIKE '%bearer token%' OR error LIKE '%Credit bal%'
+          OR error LIKE '%new token%'
+        ) THEN 1 ELSE 0 END) > 0 THEN 'error' ELSE 'success' END as status
       FROM task_run_logs
       WHERE task_id = ? AND status != 'skipped'
+        ${AUTH_ERROR_FILTER}
         AND run_at > datetime('now', '-' || ? || ' days')
       GROUP BY strftime('%Y-%m-%dT%H:00', run_at)
       ORDER BY run_at ASC`,
