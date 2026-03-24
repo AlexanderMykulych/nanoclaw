@@ -26,6 +26,7 @@ beforeAll(async () => {
     prompt: 'test',
     schedule_type: 'interval',
     schedule_value: '1h',
+    context_mode: 'isolated',
     next_run: null,
     status: 'active',
     created_at: new Date().toISOString(),
