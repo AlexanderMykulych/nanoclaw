@@ -68,6 +68,8 @@ export interface ScheduledTask {
   created_at: string;
   model?: string;
   pre_check?: string;
+  quarantined_at?: string;
+  quarantine_reason?: string;
 }
 
 export interface TaskRunLog {

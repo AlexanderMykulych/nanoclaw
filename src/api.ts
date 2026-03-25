@@ -10,6 +10,8 @@ import {
   getErrors,
   getErrorCountSince,
   getMetrics,
+  getQuarantinedTasks,
+  unquarantineTask,
   getTokenUsageSummary,
   getTokenUsageByTask,
 } from './db.js';
@@ -141,6 +143,15 @@ export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
         } else if (path.match(/^\/api\/tasks\/[^/]+\/logs$/)) {
           const taskId = path.split('/')[3];
           sendJson(res, 200, getTaskRunLogs(taskId));
+        } else if (path === '/api/tasks/quarantine' && req.method === 'GET') {
+          sendJson(res, 200, getQuarantinedTasks());
+        } else if (
+          path.match(/^\/api\/tasks\/[^/]+\/unquarantine$/) &&
+          req.method === 'POST'
+        ) {
+          const taskId = path.split('/')[3];
+          unquarantineTask(taskId);
+          sendJson(res, 200, { ok: true });
         } else if (path === '/api/containers') {
           const queueStatus = deps.queue.getStatus();
           sendJson(res, 200, queueStatus);

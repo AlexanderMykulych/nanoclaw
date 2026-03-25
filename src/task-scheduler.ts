@@ -19,6 +19,7 @@ import {
   getDueTasks,
   getTaskById,
   logTaskRun,
+  quarantineTask,
   updateTask,
   updateTaskAfterRun,
 } from './db.js';
@@ -27,6 +28,25 @@ import { resolveGroupFolderPath } from './group-folder.js';
 import { logger } from './logger.js';
 import { findObsidianVaultRoot } from './obsidian-task-sync.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
+
+/** Loop detection: track consecutive pre-check passes per task. */
+const QUARANTINE_THRESHOLD = 5;
+const QUARANTINE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const loopTracker = new Map<string, number[]>(); // taskId → timestamps of consecutive launches
+
+function trackLaunch(taskId: string): boolean {
+  const now = Date.now();
+  const timestamps = loopTracker.get(taskId) || [];
+  timestamps.push(now);
+  // Keep only timestamps within the window
+  const recent = timestamps.filter((t) => now - t < QUARANTINE_WINDOW_MS);
+  loopTracker.set(taskId, recent);
+  return recent.length >= QUARANTINE_THRESHOLD;
+}
+
+function resetLoopTracker(taskId: string): void {
+  loopTracker.delete(taskId);
+}
 
 /**
  * Compute the next run time for a recurring task, anchored to the
@@ -218,6 +238,7 @@ async function runTask(
       const preCheckResult = await runPreCheck(scriptPath, vaultRoot);
 
       if (!preCheckResult.run) {
+        resetLoopTracker(task.id);
         logger.info(
           { taskId: task.id, reason: preCheckResult.reason },
           'Task skipped by pre-check',
@@ -238,6 +259,35 @@ async function runTask(
           nextRun,
           `Skipped: ${preCheckResult.reason}`,
         );
+        return;
+      }
+
+      // Loop detection: quarantine if pre-check keeps passing
+      if (trackLaunch(task.id)) {
+        const reason = `Auto-quarantined: pre-check passed ${QUARANTINE_THRESHOLD}+ times in ${QUARANTINE_WINDOW_MS / 60000}min (possible loop). Last reason: ${preCheckResult.reason}`;
+        logger.warn({ taskId: task.id }, reason);
+        quarantineTask(task.id, reason);
+
+        logTaskRun({
+          task_id: task.id,
+          run_at: new Date().toISOString(),
+          duration_ms: Date.now() - startTime,
+          status: 'error',
+          result: null,
+          error: reason,
+        });
+
+        // Notify user
+        try {
+          await deps.sendMessage(
+            task.chat_jid,
+            `⚠️ Task **${task.id}** quarantined: ran ${QUARANTINE_THRESHOLD}+ times in ${QUARANTINE_WINDOW_MS / 60000}min. Check /api/tasks/quarantine`,
+          );
+        } catch {
+          /* notification is best-effort */
+        }
+
+        resetLoopTracker(task.id);
         return;
       }
 

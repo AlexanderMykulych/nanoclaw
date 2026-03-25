@@ -150,6 +150,22 @@ function createSchema(database: Database.Database): void {
     /* column already exists */
   }
 
+  // Add quarantine columns to scheduled_tasks
+  try {
+    database.exec(
+      `ALTER TABLE scheduled_tasks ADD COLUMN quarantined_at TEXT`,
+    );
+  } catch {
+    /* column already exists */
+  }
+  try {
+    database.exec(
+      `ALTER TABLE scheduled_tasks ADD COLUMN quarantine_reason TEXT`,
+    );
+  } catch {
+    /* column already exists */
+  }
+
   // Add is_bot_message column if it doesn't exist (migration for existing DBs)
   try {
     database.exec(
@@ -531,11 +547,32 @@ export function getDueTasks(): ScheduledTask[] {
     .prepare(
       `
     SELECT * FROM scheduled_tasks
-    WHERE status = 'active' AND next_run IS NOT NULL AND next_run <= ?
+    WHERE status = 'active' AND quarantined_at IS NULL
+      AND next_run IS NOT NULL AND next_run <= ?
     ORDER BY next_run
   `,
     )
     .all(now) as ScheduledTask[];
+}
+
+export function quarantineTask(id: string, reason: string): void {
+  db.prepare(
+    `UPDATE scheduled_tasks SET quarantined_at = ?, quarantine_reason = ? WHERE id = ?`,
+  ).run(new Date().toISOString(), reason, id);
+}
+
+export function unquarantineTask(id: string): void {
+  db.prepare(
+    `UPDATE scheduled_tasks SET quarantined_at = NULL, quarantine_reason = NULL WHERE id = ?`,
+  ).run(id);
+}
+
+export function getQuarantinedTasks(): ScheduledTask[] {
+  return db
+    .prepare(
+      `SELECT * FROM scheduled_tasks WHERE quarantined_at IS NOT NULL ORDER BY quarantined_at DESC`,
+    )
+    .all() as ScheduledTask[];
 }
 
 export function updateTaskAfterRun(
