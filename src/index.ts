@@ -121,8 +121,7 @@ function handleContainerError(
   }
 
   // Track consecutive non-auth errors for session reset
-  consecutiveErrors[groupFolder] =
-    (consecutiveErrors[groupFolder] || 0) + 1;
+  consecutiveErrors[groupFolder] = (consecutiveErrors[groupFolder] || 0) + 1;
 
   if (consecutiveErrors[groupFolder] >= 3) {
     logger.warn(

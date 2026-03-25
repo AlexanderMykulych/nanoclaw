@@ -294,7 +294,45 @@ systemctl daemon-reload
 systemctl enable --now nanoclaw
 ```
 
-### 5. Optional: Obsidian notes sync
+### 5. Server hardening
+
+The credential proxy must **never** bind to `0.0.0.0` — it injects your real API key into every request. The code auto-detects the `docker0` bridge IP on Linux, but you should also lock down the OS:
+
+```bash
+# Firewall — allow only SSH, HTTP, HTTPS
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow 22/tcp   # SSH
+ufw allow 80/tcp   # HTTP (Caddy)
+ufw allow 443/tcp  # HTTPS (Caddy)
+ufw enable
+
+# Disable SSH password auth (key-only)
+echo 'PasswordAuthentication no' > /etc/ssh/sshd_config.d/hardening.conf
+echo 'MaxAuthTries 3'           >> /etc/ssh/sshd_config.d/hardening.conf
+systemctl reload ssh
+
+# Brute-force protection
+apt install -y fail2ban
+cat > /etc/fail2ban/jail.local << 'EOF'
+[sshd]
+enabled = true
+maxretry = 3
+bantime = 3600
+findtime = 600
+EOF
+systemctl enable --now fail2ban
+```
+
+Verify after setup:
+```bash
+ss -tlnp | grep 3001          # should show 172.17.0.1, NOT 0.0.0.0
+curl -s --connect-timeout 3 http://<your-ip>:3001/  # should fail (connection refused)
+ufw status                     # should show active
+fail2ban-client status sshd    # should show the jail is active
+```
+
+### 6. Optional: Obsidian notes sync
 
 ```bash
 git clone git@github.com:<user>/Obsidian_Memory.git /workspace/extra/Obsidian_Memory

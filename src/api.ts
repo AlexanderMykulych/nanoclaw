@@ -112,10 +112,16 @@ export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
           }));
           sendJson(res, 200, result);
         } else if (path === '/api/token-usage/summary') {
-          const days = Math.max(1, Math.min(30, parseInt(params.get('days') || '7', 10) || 7));
+          const days = Math.max(
+            1,
+            Math.min(30, parseInt(params.get('days') || '7', 10) || 7),
+          );
           sendJson(res, 200, getTokenUsageSummary(days));
         } else if (path === '/api/token-usage/by-task') {
-          const days = Math.max(1, Math.min(30, parseInt(params.get('days') || '7', 10) || 7));
+          const days = Math.max(
+            1,
+            Math.min(30, parseInt(params.get('days') || '7', 10) || 7),
+          );
           sendJson(res, 200, getTokenUsageByTask(days));
         } else if (path === '/api/tasks') {
           sendJson(res, 200, getScheduledTasks());

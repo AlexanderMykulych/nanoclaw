@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { _initTestDatabase, logError, logTaskRun, createTask, insertTokenUsage } from './db.js';
+import {
+  _initTestDatabase,
+  logError,
+  logTaskRun,
+  createTask,
+  insertTokenUsage,
+} from './db.js';
 import { GroupQueue } from './group-queue.js';
 
 import { startApiServer } from './api.js';
@@ -73,9 +79,30 @@ beforeAll(async () => {
   });
 
   // Seed token usage for usage API tests
-  insertTokenUsage({ group_folder: 'telegram_main', task_id: 'obs-test-task', model: 'claude-sonnet-4-20250514', input_tokens: 1000, output_tokens: 500, cost_usd: 0.0105 });
-  insertTokenUsage({ group_folder: 'telegram_main', task_id: 'obs-test-task', model: 'claude-sonnet-4-20250514', input_tokens: 2000, output_tokens: 1000, cost_usd: 0.021 });
-  insertTokenUsage({ group_folder: 'telegram_main', task_id: null, model: 'claude-sonnet-4-20250514', input_tokens: 500, output_tokens: 200, cost_usd: 0.0045 });
+  insertTokenUsage({
+    group_folder: 'telegram_main',
+    task_id: 'obs-test-task',
+    model: 'claude-sonnet-4-20250514',
+    input_tokens: 1000,
+    output_tokens: 500,
+    cost_usd: 0.0105,
+  });
+  insertTokenUsage({
+    group_folder: 'telegram_main',
+    task_id: 'obs-test-task',
+    model: 'claude-sonnet-4-20250514',
+    input_tokens: 2000,
+    output_tokens: 1000,
+    cost_usd: 0.021,
+  });
+  insertTokenUsage({
+    group_folder: 'telegram_main',
+    task_id: null,
+    model: 'claude-sonnet-4-20250514',
+    input_tokens: 500,
+    output_tokens: 200,
+    cost_usd: 0.0045,
+  });
 
   const queue = new GroupQueue();
   server = await startApiServer(0, { queue, version: '1.0.0-test' });

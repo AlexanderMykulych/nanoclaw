@@ -97,8 +97,11 @@ export function startMetricsCollector(queue: GroupQueue): void {
   }, COLLECT_INTERVAL);
 
   // Cleanup daily
-  setInterval(() => {
-    cleanupMetrics(RETENTION_DAYS);
-    cleanupTokenUsage(30);
-  }, 24 * 60 * 60 * 1000);
+  setInterval(
+    () => {
+      cleanupMetrics(RETENTION_DAYS);
+      cleanupTokenUsage(30);
+    },
+    24 * 60 * 60 * 1000,
+  );
 }

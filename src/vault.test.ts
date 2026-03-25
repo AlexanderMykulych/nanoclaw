@@ -184,7 +184,11 @@ describe('createVaultNote', () => {
   });
 
   it('defaults sphere to інше', () => {
-    const result = createVaultNote('Default sphere test', undefined, noteVaultDir);
+    const result = createVaultNote(
+      'Default sphere test',
+      undefined,
+      noteVaultDir,
+    );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 

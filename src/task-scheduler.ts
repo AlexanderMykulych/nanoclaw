@@ -205,6 +205,7 @@ async function runTask(
   );
 
   // Pre-check: run lightweight script before launching agent
+  let preCheckReason: string | null = null;
   if (task.pre_check) {
     const vaultRoot = findObsidianVaultRoot(deps.registeredGroups());
     if (!vaultRoot) {
@@ -240,11 +241,18 @@ async function runTask(
         return;
       }
 
+      preCheckReason = preCheckResult.reason;
       logger.info(
         { taskId: task.id, reason: preCheckResult.reason },
         'Pre-check passed, launching agent',
       );
     }
+  }
+
+  // Build prompt, appending pre-check context when available
+  let prompt = task.prompt;
+  if (preCheckReason) {
+    prompt += `\n\n<pre-check-context>\n${preCheckReason}\n</pre-check-context>`;
   }
 
   let result: string | null = null;
@@ -273,7 +281,7 @@ async function runTask(
     const output = await runContainerAgent(
       group,
       {
-        prompt: task.prompt,
+        prompt,
         sessionId,
         groupFolder: task.group_folder,
         chatJid: task.chat_jid,
