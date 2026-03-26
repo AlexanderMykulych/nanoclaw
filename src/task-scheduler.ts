@@ -30,7 +30,7 @@ import { findObsidianVaultRoot } from './obsidian-task-sync.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
 
 /** Loop detection: track consecutive pre-check passes per task. */
-const QUARANTINE_THRESHOLD = 5;
+const QUARANTINE_THRESHOLD = 15;
 const QUARANTINE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const loopTracker = new Map<string, number[]>(); // taskId → timestamps of consecutive launches
 
