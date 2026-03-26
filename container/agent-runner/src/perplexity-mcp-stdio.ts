@@ -84,6 +84,7 @@ server.tool(
       ),
   },
   async (args) => {
+    console.error(`[perplexity-mcp] perplexity_research called: model=${args.model || defaultModel}, query="${args.query.slice(0, 100)}"`);
     const messages: Array<{ role: string; content: string }> = [];
 
     if (args.context) {
@@ -100,6 +101,8 @@ server.tool(
 
     const model = args.model || defaultModel;
     const result = await callPerplexity(messages, model);
+
+    console.error(`[perplexity-mcp] response received: ${result.length} chars`);
 
     return {
       content: [{ type: 'text' as const, text: result }],
