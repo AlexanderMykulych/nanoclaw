@@ -152,9 +152,7 @@ function createSchema(database: Database.Database): void {
 
   // Add quarantine columns to scheduled_tasks
   try {
-    database.exec(
-      `ALTER TABLE scheduled_tasks ADD COLUMN quarantined_at TEXT`,
-    );
+    database.exec(`ALTER TABLE scheduled_tasks ADD COLUMN quarantined_at TEXT`);
   } catch {
     /* column already exists */
   }
@@ -908,7 +906,7 @@ export function getTaskStats(days: number): TaskStatsRow[] {
         COALESCE(ROUND(AVG(CASE WHEN status = 'success' THEN duration_ms END)), 0) as avg_duration_ms,
         COALESCE(MAX(CASE WHEN status = 'success' THEN duration_ms END), 0) as max_duration_ms,
         COALESCE(MIN(CASE WHEN status = 'success' THEN duration_ms END), 0) as min_duration_ms,
-        MAX(run_at) as last_run,
+        MAX(CASE WHEN status != 'skipped' THEN run_at END) as last_run,
         COALESCE(ROUND(100.0 * SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) /
           NULLIF(
             SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) +
