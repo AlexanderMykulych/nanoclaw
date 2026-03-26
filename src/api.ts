@@ -17,6 +17,7 @@ import {
 } from './db.js';
 import type { GroupQueue } from './group-queue.js';
 import { readEnvFile } from './env.js';
+import { getLatestRateLimits } from './credential-proxy.js';
 import {
   listVaultItems,
   getVaultItem,
@@ -125,6 +126,8 @@ export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
             Math.min(30, parseInt(params.get('days') || '7', 10) || 7),
           );
           sendJson(res, 200, getTokenUsageByTask(days));
+        } else if (path === '/api/rate-limits') {
+          sendJson(res, 200, getLatestRateLimits() || { error: 'No rate limit data yet' });
         } else if (path === '/api/tasks') {
           sendJson(res, 200, getScheduledTasks());
         } else if (path === '/api/tasks/stats') {

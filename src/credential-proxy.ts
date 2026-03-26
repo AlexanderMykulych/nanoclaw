@@ -30,6 +30,43 @@ export interface ProxyConfig {
   authMode: AuthMode;
 }
 
+/** Latest rate limit info captured from Anthropic API response headers. */
+export interface RateLimitInfo {
+  requestsLimit: number | null;
+  requestsRemaining: number | null;
+  requestsReset: string | null;
+  tokensLimit: number | null;
+  tokensRemaining: number | null;
+  tokensReset: string | null;
+  updatedAt: string;
+}
+
+let latestRateLimits: RateLimitInfo | null = null;
+
+function captureRateLimitHeaders(headers: Record<string, string | string[] | undefined>): void {
+  const get = (name: string): string | null => {
+    const v = headers[name];
+    return typeof v === 'string' ? v : null;
+  };
+
+  const hasAny = get('x-ratelimit-limit-requests') || get('x-ratelimit-limit-tokens');
+  if (!hasAny) return;
+
+  latestRateLimits = {
+    requestsLimit: parseInt(get('x-ratelimit-limit-requests') || '', 10) || null,
+    requestsRemaining: parseInt(get('x-ratelimit-remaining-requests') || '', 10) || null,
+    requestsReset: get('x-ratelimit-reset-requests'),
+    tokensLimit: parseInt(get('x-ratelimit-limit-tokens') || '', 10) || null,
+    tokensRemaining: parseInt(get('x-ratelimit-remaining-tokens') || '', 10) || null,
+    tokensReset: get('x-ratelimit-reset-tokens'),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function getLatestRateLimits(): RateLimitInfo | null {
+  return latestRateLimits;
+}
+
 const OAUTH_TOKEN_URL = 'https://platform.claude.com/v1/oauth/token';
 const OAUTH_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
 
@@ -261,6 +298,8 @@ export function startCredentialProxy(
         const isMessages = cleanPath.includes('/v1/messages');
         const isJson = contentType.includes('application/json');
         const isSse = contentType.includes('text/event-stream');
+
+        captureRateLimitHeaders(upRes.headers as Record<string, string | string[] | undefined>);
 
         res.writeHead(upRes.statusCode!, upRes.headers);
 
