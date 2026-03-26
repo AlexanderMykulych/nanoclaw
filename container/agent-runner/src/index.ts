@@ -422,7 +422,8 @@ async function runQuery(
         'NotebookEdit',
         'mcp__nanoclaw__*',
         'mcp__google_calendar__*',
-        'mcp__gemini__*'
+        'mcp__gemini__*',
+        'mcp__perplexity__*'
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -459,6 +460,18 @@ async function runQuery(
                 args: [path.join(path.dirname(mcpServerPath), 'gemini-mcp-stdio.js')],
                 env: {
                   GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
+                },
+              },
+            }
+          : {}),
+        ...(process.env.PERPLEXITY_API_KEY
+          ? {
+              perplexity: {
+                command: 'node',
+                args: [path.join(path.dirname(mcpServerPath), 'perplexity-mcp-stdio.js')],
+                env: {
+                  PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY || '',
+                  PERPLEXITY_MODEL: process.env.PERPLEXITY_MODEL || '',
                 },
               },
             }

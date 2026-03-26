@@ -284,6 +284,15 @@ function buildContainerArgs(
     args.push('-e', `GEMINI_API_KEY=${geminiEnv.GEMINI_API_KEY}`);
   }
 
+  // Pass Perplexity API key if configured
+  const perplexityEnv = readEnvFile(['PERPLEXITY_API_KEY', 'PERPLEXITY_MODEL']);
+  if (perplexityEnv.PERPLEXITY_API_KEY) {
+    args.push('-e', `PERPLEXITY_API_KEY=${perplexityEnv.PERPLEXITY_API_KEY}`);
+    if (perplexityEnv.PERPLEXITY_MODEL) {
+      args.push('-e', `PERPLEXITY_MODEL=${perplexityEnv.PERPLEXITY_MODEL}`);
+    }
+  }
+
   // Runtime-specific args for host gateway resolution
   args.push(...hostGatewayArgs());
 
