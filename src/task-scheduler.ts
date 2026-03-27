@@ -30,12 +30,15 @@ import { findObsidianVaultRoot } from './obsidian-task-sync.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
 
 /** Loop detection: track consecutive pre-check passes per task. */
-const QUARANTINE_THRESHOLD = 15;
+const QUARANTINE_THRESHOLD = 10;
 const QUARANTINE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const SKIP_STREAK_TO_RESET = 3; // need 3 consecutive skips to reset the counter
 const loopTracker = new Map<string, number[]>(); // taskId → timestamps of consecutive launches
+const skipStreak = new Map<string, number>(); // taskId → consecutive skip count
 
 function trackLaunch(taskId: string): boolean {
   const now = Date.now();
+  skipStreak.set(taskId, 0); // launch resets skip streak
   const timestamps = loopTracker.get(taskId) || [];
   timestamps.push(now);
   // Keep only timestamps within the window
@@ -45,7 +48,14 @@ function trackLaunch(taskId: string): boolean {
 }
 
 function resetLoopTracker(taskId: string): void {
-  loopTracker.delete(taskId);
+  // Only reset after multiple consecutive skips — a single skip
+  // between loops shouldn't reset the counter
+  const streak = (skipStreak.get(taskId) || 0) + 1;
+  skipStreak.set(taskId, streak);
+  if (streak >= SKIP_STREAK_TO_RESET) {
+    loopTracker.delete(taskId);
+    skipStreak.delete(taskId);
+  }
 }
 
 /**
