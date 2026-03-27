@@ -62,6 +62,7 @@ import { syncObsidianTasks } from './obsidian-task-sync.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { startMetricsCollector } from './metrics-collector.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
+import { logIncomingMessage, logOutgoingMessage } from './message-logger.js';
 import { logger } from './logger.js';
 
 // Re-export for backwards compatibility during refactor
@@ -346,6 +347,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
           await channel.sendMessage(chatJid, text);
         }
         outputSentToUser = true;
+        logOutgoingMessage(group.name, text);
       }
       resetIdleTimer();
     }
@@ -663,6 +665,11 @@ async function main(): Promise<void> {
         }
       }
       storeMessage(msg);
+      // Log to Obsidian
+      const group = registeredGroups[msg.chat_jid];
+      if (group && msg.content) {
+        logIncomingMessage(group.name, msg.sender_name || msg.sender, msg.content);
+      }
     },
     onChatMetadata: (
       chatJid: string,
@@ -710,7 +717,11 @@ async function main(): Promise<void> {
         return;
       }
       const text = formatOutbound(rawText);
-      if (text) await channel.sendMessage(jid, text);
+      if (text) {
+        await channel.sendMessage(jid, text);
+        const group = registeredGroups[jid];
+        if (group) logOutgoingMessage(group.name, text);
+      }
     },
   });
   // Sync Obsidian-defined scheduled tasks at startup and every 5 minutes
@@ -721,6 +732,8 @@ async function main(): Promise<void> {
     sendMessage: (jid, text) => {
       const channel = findChannel(channels, jid);
       if (!channel) throw new Error(`No channel for JID: ${jid}`);
+      const group = registeredGroups[jid];
+      if (group) logOutgoingMessage(group.name, text);
       return channel.sendMessage(jid, text);
     },
     registeredGroups: () => registeredGroups,
