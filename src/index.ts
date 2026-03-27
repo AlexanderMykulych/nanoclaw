@@ -120,7 +120,18 @@ function handleContainerError(
     return;
   }
 
-  // Track consecutive non-auth errors for session reset
+  // error_during_execution = corrupted session — reset immediately
+  if (errorText?.includes('error_during_execution')) {
+    logger.warn(
+      { group: groupFolder },
+      'Corrupted session detected (error_during_execution), auto-resetting',
+    );
+    delete sessions[groupFolder];
+    deleteSession(groupFolder);
+    return;
+  }
+
+  // Other errors: track consecutive failures, reset session after 3
   consecutiveErrors[groupFolder] = (consecutiveErrors[groupFolder] || 0) + 1;
 
   if (consecutiveErrors[groupFolder] >= 3) {
