@@ -24,6 +24,26 @@ export function formatMessages(
   return `${header}<messages>\n${lines.join('\n')}\n</messages>`;
 }
 
+/**
+ * Format conversation history (including bot messages) as XML context.
+ * Used when a session is reset so the agent has context about the recent conversation.
+ */
+export function formatConversationHistory(
+  messages: NewMessage[],
+  timezone: string,
+  assistantName: string,
+): string {
+  if (messages.length === 0) return '';
+
+  const lines = messages.map((m) => {
+    const displayTime = formatLocalTime(m.timestamp, timezone);
+    const role = m.is_bot_message ? 'assistant' : 'user';
+    return `<message sender="${escapeXml(m.sender_name)}" time="${escapeXml(displayTime)}" role="${role}">${escapeXml(m.content)}</message>`;
+  });
+
+  return `<conversation_history note="Recent conversation for context. Your previous session was reset, so this history is provided to maintain continuity. You are ${escapeXml(assistantName)}.">\n${lines.join('\n')}\n</conversation_history>\n\n`;
+}
+
 export function stripInternalTags(text: string): string {
   return text.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
 }
