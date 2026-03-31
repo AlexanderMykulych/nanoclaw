@@ -42,7 +42,7 @@ function parseFrontmatter(raw: string): {
   if (!match) return { frontmatter: {}, content: raw };
   try {
     const frontmatter = YAML.parse(match[1]) as Record<string, unknown>;
-    return { frontmatter, content: match[2].trim() };
+    return { frontmatter, content: match[2].trimStart() };
   } catch {
     return { frontmatter: {}, content: raw };
   }
@@ -265,12 +265,16 @@ export function updateVaultNote(
       updates.frontmatter.sphere !== undefined &&
       !VALID_SPHERES.includes(updates.frontmatter.sphere as NoteSphere)
     ) {
-      return { ok: false, error: `Invalid sphere: ${updates.frontmatter.sphere}` };
+      return {
+        ok: false,
+        error: `Invalid sphere: ${updates.frontmatter.sphere}`,
+      };
     }
     Object.assign(mergedFrontmatter, updates.frontmatter);
   }
 
-  const body = updates.text !== undefined ? updates.text.trim() : parsed.content.trim();
+  const body =
+    updates.text !== undefined ? updates.text.trim() : parsed.content.trim();
   const yamlStr = YAML.stringify(mergedFrontmatter).trimEnd();
   const newContent = `---\n${yamlStr}\n---\n\n${body}\n`;
 

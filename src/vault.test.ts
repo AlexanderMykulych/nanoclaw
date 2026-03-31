@@ -240,11 +240,15 @@ Original note text.
   });
 
   it('updates body text', () => {
-    const result = updateVaultNote(testFilename, { text: 'Updated text.' }, noteVaultDir);
+    const result = updateVaultNote(
+      testFilename,
+      { text: 'Updated text.' },
+      noteVaultDir,
+    );
     expect(result.ok).toBe(true);
 
     const item = getVaultItem('notes', testFilename, noteVaultDir);
-    expect(item!.content).toBe('Updated text.');
+    expect(item!.content.trim()).toBe('Updated text.');
     expect(item!.frontmatter.date).toBe('2026-03-31');
     expect(item!.frontmatter.sphere).toBe('робота');
   });
@@ -274,7 +278,7 @@ Original note text.
     expect(result.ok).toBe(true);
 
     const item = getVaultItem('notes', testFilename, noteVaultDir);
-    expect(item!.content).toBe('Both updated.');
+    expect(item!.content.trim()).toBe('Both updated.');
     expect(item!.frontmatter.sphere).toBe("сім'я");
   });
 
@@ -289,7 +293,11 @@ Original note text.
   });
 
   it('rejects path traversal', () => {
-    const result = updateVaultNote('../../../etc/passwd', { text: 'hack' }, noteVaultDir);
+    const result = updateVaultNote(
+      '../../../etc/passwd',
+      { text: 'hack' },
+      noteVaultDir,
+    );
     expect(result.ok).toBe(false);
   });
 
@@ -299,7 +307,11 @@ Original note text.
   });
 
   it('returns error for nonexistent file', () => {
-    const result = updateVaultNote('nonexistent.md', { text: 'test' }, noteVaultDir);
+    const result = updateVaultNote(
+      'nonexistent.md',
+      { text: 'test' },
+      noteVaultDir,
+    );
     expect(result.ok).toBe(false);
   });
 });
