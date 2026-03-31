@@ -8,6 +8,7 @@ import {
   listVaultTasks,
   toggleVaultTask,
   createVaultNote,
+  updateVaultNote,
 } from './vault.js';
 
 let testVaultDir: string;
@@ -206,6 +207,99 @@ describe('createVaultNote', () => {
 
   it('rejects invalid sphere', () => {
     const result = createVaultNote('test', 'invalid' as never, noteVaultDir);
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe('updateVaultNote', () => {
+  let noteVaultDir: string;
+  const testFilename = 'test-note.md';
+
+  beforeAll(() => {
+    noteVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vault-update-test-'));
+    const notesDir = path.join(noteVaultDir, 'notes');
+    fs.mkdirSync(notesDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(notesDir, testFilename),
+      `---
+date: 2026-03-31
+time: "14:30"
+sphere: робота
+tags:
+  - note
+needs_ai_format: true
+---
+
+Original note text.
+`,
+    );
+  });
+
+  afterAll(() => {
+    fs.rmSync(noteVaultDir, { recursive: true, force: true });
+  });
+
+  it('updates body text', () => {
+    const result = updateVaultNote(testFilename, { text: 'Updated text.' }, noteVaultDir);
+    expect(result.ok).toBe(true);
+
+    const item = getVaultItem('notes', testFilename, noteVaultDir);
+    expect(item!.content).toBe('Updated text.');
+    expect(item!.frontmatter.date).toBe('2026-03-31');
+    expect(item!.frontmatter.sphere).toBe('робота');
+  });
+
+  it('updates frontmatter fields while preserving others', () => {
+    const result = updateVaultNote(
+      testFilename,
+      { frontmatter: { sphere: 'дім', tags: ['note', 'edited'] } },
+      noteVaultDir,
+    );
+    expect(result.ok).toBe(true);
+
+    const item = getVaultItem('notes', testFilename, noteVaultDir);
+    expect(item!.frontmatter.sphere).toBe('дім');
+    expect(item!.frontmatter.tags).toEqual(['note', 'edited']);
+    expect(item!.frontmatter.date).toBe('2026-03-31');
+    expect(item!.frontmatter.time).toBe('14:30');
+    expect(item!.frontmatter.needs_ai_format).toBe(true);
+  });
+
+  it('updates both text and frontmatter at once', () => {
+    const result = updateVaultNote(
+      testFilename,
+      { text: 'Both updated.', frontmatter: { sphere: "сім'я" } },
+      noteVaultDir,
+    );
+    expect(result.ok).toBe(true);
+
+    const item = getVaultItem('notes', testFilename, noteVaultDir);
+    expect(item!.content).toBe('Both updated.');
+    expect(item!.frontmatter.sphere).toBe("сім'я");
+  });
+
+  it('rejects invalid sphere', () => {
+    const result = updateVaultNote(
+      testFilename,
+      { frontmatter: { sphere: 'invalid' } },
+      noteVaultDir,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain('Invalid sphere');
+  });
+
+  it('rejects path traversal', () => {
+    const result = updateVaultNote('../../../etc/passwd', { text: 'hack' }, noteVaultDir);
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects non-md files', () => {
+    const result = updateVaultNote('file.txt', { text: 'hack' }, noteVaultDir);
+    expect(result.ok).toBe(false);
+  });
+
+  it('returns error for nonexistent file', () => {
+    const result = updateVaultNote('nonexistent.md', { text: 'test' }, noteVaultDir);
     expect(result.ok).toBe(false);
   });
 });

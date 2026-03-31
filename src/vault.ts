@@ -42,7 +42,7 @@ function parseFrontmatter(raw: string): {
   if (!match) return { frontmatter: {}, content: raw };
   try {
     const frontmatter = YAML.parse(match[1]) as Record<string, unknown>;
-    return { frontmatter, content: match[2].trimStart() };
+    return { frontmatter, content: match[2].trim() };
   } catch {
     return { frontmatter: {}, content: raw };
   }
@@ -232,6 +232,50 @@ ${text.trim()}
 
   fs.writeFileSync(path.join(notesDir, finalFilename), content, 'utf-8');
   return { ok: true, filename: finalFilename };
+}
+
+export function updateVaultNote(
+  filename: string,
+  updates: { text?: string; frontmatter?: Record<string, unknown> },
+  vaultPath: string = OBSIDIAN_VAULT_PATH,
+): { ok: true } | { ok: false; error: string } {
+  if (filename.includes('..') || !filename.endsWith('.md')) {
+    return { ok: false, error: 'Invalid filename' };
+  }
+
+  const notesDir = path.join(vaultPath, 'notes');
+  const filePath = path.join(notesDir, filename);
+  const resolvedDir = path.resolve(notesDir);
+  const resolvedFile = path.resolve(filePath);
+  if (!resolvedFile.startsWith(resolvedDir)) {
+    return { ok: false, error: 'Invalid filename' };
+  }
+
+  if (!fs.existsSync(filePath)) {
+    return { ok: false, error: 'Note not found' };
+  }
+
+  const raw = fs.readFileSync(filePath, 'utf-8');
+  const parsed = parseFrontmatter(raw);
+
+  // Merge frontmatter
+  const mergedFrontmatter = { ...parsed.frontmatter };
+  if (updates.frontmatter) {
+    if (
+      updates.frontmatter.sphere !== undefined &&
+      !VALID_SPHERES.includes(updates.frontmatter.sphere as NoteSphere)
+    ) {
+      return { ok: false, error: `Invalid sphere: ${updates.frontmatter.sphere}` };
+    }
+    Object.assign(mergedFrontmatter, updates.frontmatter);
+  }
+
+  const body = updates.text !== undefined ? updates.text.trim() : parsed.content.trim();
+  const yamlStr = YAML.stringify(mergedFrontmatter).trimEnd();
+  const newContent = `---\n${yamlStr}\n---\n\n${body}\n`;
+
+  fs.writeFileSync(filePath, newContent, 'utf-8');
+  return { ok: true };
 }
 
 export function toggleVaultTask(
