@@ -25,6 +25,7 @@ import {
   toggleVaultTask,
   updateVaultItemStatus,
   createVaultNote,
+  updateVaultNote,
 } from './vault.js';
 import type { NoteSphere } from './vault.js';
 
@@ -58,7 +59,7 @@ export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
       if (req.method === 'OPTIONS') {
         res.writeHead(204, {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
           'Access-Control-Allow-Headers':
             'Telegram-Web-App-Init-Data, Content-Type',
         });
@@ -127,7 +128,11 @@ export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
           );
           sendJson(res, 200, getTokenUsageByTask(days));
         } else if (path === '/api/rate-limits') {
-          sendJson(res, 200, getLatestRateLimits() || { error: 'No rate limit data yet' });
+          sendJson(
+            res,
+            200,
+            getLatestRateLimits() || { error: 'No rate limit data yet' },
+          );
         } else if (path === '/api/tasks') {
           sendJson(res, 200, getScheduledTasks());
         } else if (path === '/api/tasks/stats') {
@@ -165,6 +170,35 @@ export function startApiServer(port: number, deps: ApiDeps): Promise<Server> {
           const limit = parseInt(params.get('limit') || '50', 10);
           const offset = parseInt(params.get('offset') || '0', 10);
           sendJson(res, 200, getErrors({ limit, offset }));
+        } else if (
+          path.match(/^\/api\/vault\/notes\/[^/]+$/) &&
+          req.method === 'PUT'
+        ) {
+          const filename = decodeURIComponent(path.split('/')[4]);
+          const chunks: Buffer[] = [];
+          req.on('data', (c: Buffer) => chunks.push(c));
+          req.on('end', () => {
+            try {
+              const body = JSON.parse(Buffer.concat(chunks).toString()) as {
+                text?: string;
+                frontmatter?: Record<string, unknown>;
+              };
+              const result = updateVaultNote(filename, {
+                text: body.text,
+                frontmatter: body.frontmatter,
+              });
+              if (result.ok) {
+                sendJson(res, 200, { ok: true });
+              } else {
+                sendJson(res, result.error === 'Note not found' ? 404 : 400, {
+                  error: result.error,
+                });
+              }
+            } catch {
+              sendJson(res, 400, { error: 'Invalid request body' });
+            }
+          });
+          return;
         } else if (path === '/api/vault/notes' && req.method === 'POST') {
           const chunks: Buffer[] = [];
           req.on('data', (c: Buffer) => chunks.push(c));

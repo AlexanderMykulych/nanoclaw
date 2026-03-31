@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import {
   _initTestDatabase,
   logError,
@@ -10,6 +13,21 @@ import { GroupQueue } from './group-queue.js';
 
 import { startApiServer } from './api.js';
 import type { Server } from 'http';
+
+// Create a temp vault dir for tests.
+// vi.hoisted runs before imports are processed by Vitest; use createRequire to
+// access Node built-ins since we're in an ESM context.
+const testVaultRoot = vi.hoisted(() => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const _fs = require('fs') as typeof import('fs');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const _os = require('os') as typeof import('os');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const _path = require('path') as typeof import('path');
+  const tmpDir = _fs.mkdtempSync(_path.join(_os.tmpdir(), 'api-test-vault-'));
+  process.env.OBSIDIAN_VAULT_PATH = tmpDir;
+  return tmpDir;
+});
 
 // Bypass auth: mock readEnvFile so TELEGRAM_BOT_TOKEN is never returned,
 // making botToken empty and skipping the auth check in api.ts
@@ -111,6 +129,9 @@ beforeAll(async () => {
 
 afterAll(() => {
   server?.close();
+  if (testVaultRoot) {
+    fs.rmSync(testVaultRoot, { recursive: true, force: true });
+  }
 });
 
 async function fetchApi(path: string): Promise<Response> {
@@ -229,5 +250,54 @@ describe('API endpoints', () => {
     const msgs = data.find((t) => t.task_id === '(messages)');
     expect(msgs).toBeDefined();
     expect(msgs!.input_tokens).toBe(500);
+  });
+
+  it('PUT /api/vault/notes/:filename updates a note', async () => {
+    // First create a note to edit
+    const createRes = await fetch(`http://127.0.0.1:${port}/api/vault/notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'Original text', sphere: 'робота' }),
+    });
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as { ok: boolean; filename: string };
+    expect(created.ok).toBe(true);
+
+    // Now update it
+    const updateRes = await fetch(
+      `http://127.0.0.1:${port}/api/vault/notes/${encodeURIComponent(created.filename)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Updated text',
+          frontmatter: { sphere: 'дім' },
+        }),
+      },
+    );
+    expect(updateRes.status).toBe(200);
+    const updateData = (await updateRes.json()) as { ok: boolean };
+    expect(updateData.ok).toBe(true);
+
+    // Verify via GET
+    const getRes = await fetchApi(
+      `/api/vault/notes/${encodeURIComponent(created.filename)}`,
+    );
+    expect(getRes.status).toBe(200);
+    const item = (await getRes.json()) as { content: string; frontmatter: Record<string, unknown> };
+    expect(item.content).toContain('Updated text');
+    expect(item.frontmatter.sphere).toBe('дім');
+  });
+
+  it('PUT /api/vault/notes/nonexistent.md returns 404', async () => {
+    const res = await fetch(
+      `http://127.0.0.1:${port}/api/vault/notes/nonexistent.md`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'test' }),
+      },
+    );
+    expect(res.status).toBe(404);
   });
 });
