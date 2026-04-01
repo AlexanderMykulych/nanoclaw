@@ -62,18 +62,19 @@ export function listVaultItems(
 
   return files
     .map((filename) => {
-      const raw = fs.readFileSync(path.join(dirPath, filename), 'utf-8');
+      const filePath = path.join(dirPath, filename);
+      const raw = fs.readFileSync(filePath, 'utf-8');
       const { frontmatter } = parseFrontmatter(raw);
       const title =
         (frontmatter[typeConfig.titleField] as string) ||
         filename.replace(/\.md$/, '');
       const badge = (frontmatter[typeConfig.badgeField] as string) || null;
       const created = (frontmatter.created as string) || null;
-      return { filename, title, badge, created };
+      const mtime = fs.statSync(filePath).mtimeMs;
+      return { filename, title, badge, created, mtime };
     })
     .sort((a, b) => {
-      if (!a.created && !b.created)
-        return b.filename.localeCompare(a.filename);
+      if (!a.created && !b.created) return b.mtime - a.mtime;
       if (!a.created) return 1;
       if (!b.created) return -1;
       return b.created.localeCompare(a.created);
