@@ -27,6 +27,7 @@ export interface VaultListItem {
   title: string;
   badge: string | null;
   created: string | null;
+  modified: string | null;
 }
 
 export interface VaultItemDetail {
@@ -69,12 +70,18 @@ export function listVaultItems(
         (frontmatter[typeConfig.titleField] as string) ||
         filename.replace(/\.md$/, '');
       const badge = (frontmatter[typeConfig.badgeField] as string) || null;
-      const created = (frontmatter.created as string) || null;
-      const mtime = fs.statSync(filePath).mtimeMs;
-      return { filename, title, badge, created, mtime };
+      const created =
+        (frontmatter.created as string) ||
+        (frontmatter.date && frontmatter.time
+          ? `${frontmatter.date} ${frontmatter.time}`
+          : (frontmatter.date as string)) ||
+        null;
+      const stat = fs.statSync(filePath);
+      const modified = new Date(stat.mtimeMs).toISOString();
+      return { filename, title, badge, created, modified };
     })
     .sort((a, b) => {
-      if (!a.created && !b.created) return b.mtime - a.mtime;
+      if (!a.created && !b.created) return 0;
       if (!a.created) return 1;
       if (!b.created) return -1;
       return b.created.localeCompare(a.created);
