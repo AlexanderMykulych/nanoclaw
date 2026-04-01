@@ -72,7 +72,8 @@ export function listVaultItems(
       return { filename, title, badge, created };
     })
     .sort((a, b) => {
-      if (!a.created && !b.created) return 0;
+      if (!a.created && !b.created)
+        return b.filename.localeCompare(a.filename);
       if (!a.created) return 1;
       if (!b.created) return -1;
       return b.created.localeCompare(a.created);
