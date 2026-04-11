@@ -230,6 +230,19 @@ function buildVolumeMounts(
       isMain,
     );
     mounts.push(...validatedMounts);
+
+    // Protect .git dirs inside additional mounts from container writes
+    // (agents sometimes run git commands that create stale alternates/objects)
+    for (const m of validatedMounts) {
+      const gitDir = path.join(m.hostPath, '.git');
+      if (fs.existsSync(gitDir)) {
+        mounts.push({
+          hostPath: gitDir,
+          containerPath: path.join(m.containerPath, '.git'),
+          readonly: true,
+        });
+      }
+    }
   }
 
   return mounts;
